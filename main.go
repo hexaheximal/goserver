@@ -84,7 +84,7 @@ func main() {
 		level = protocol.DeserializeLevel(protocol.DecompressData(content))
 	}
 
-	listen, err := net.Listen("tcp", "127.0.0.1:25565")
+	listen, err := net.Listen("tcp", "127.0.0.1:" + serverConfig.GetString("port"))
 
 	if err != nil {
 		log.Fatalln(err)
@@ -161,7 +161,7 @@ func SendInitialData(conn net.Conn, buffer []byte, id int) {
 
 	username := protocol.DecodeString(buffer, 2)
 
-	conn.Write(protocol.ServerIdentification("Minecraft Server", "A minecraft server, written in Go.", false)) // Server Identification
+	conn.Write(protocol.ServerIdentification(serverConfig.GetString("server-name"), serverConfig.GetString("motd"), false)) // Server Identification
 
 	conn.Write([]byte{protocol.SERVER_LEVEL_INITIALIZE}) // Level Initialize
 
