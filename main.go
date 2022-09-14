@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"goserver/protocol"
+	"goserver/config"
 	"io/ioutil"
 	"log"
 	"net"
@@ -14,6 +15,7 @@ import (
 
 var level protocol.Level
 var clients []Client
+var serverConfig config.Config
 
 type Client struct {
 	Username string
@@ -40,6 +42,33 @@ func main() {
 	NULL_CLIENT = Client{"", 0, 0, 0, 0, 0, 0, nil}
 
 	clients = make([]Client, 32)
+	
+	if _, err := os.Stat("server.properties"); errors.Is(err, os.ErrNotExist) {
+		log.Println("Creating server.properties...")
+		
+		configData := "# Minecraft server properties (goserver)\nserver-name=Minecraft Server\nmotd=Welcome to my Minecraft Server!\npublic=false\nport=25565\nverify-names=false\nmax-players=32\nmax-connections=1\ngrow-trees=false\nadmin-slot=false"
+		err := ioutil.WriteFile("server.properties", []byte(configData), 0644)
+		
+		if err != nil {
+			log.Fatalln("Failed to create server.properties:", err)
+		}
+		
+		serverConfig = config.ParseConfig(string(configData))
+		
+		log.Println(serverConfig)
+	} else {
+		log.Println("Reading server.properties...")
+		
+		content, err := ioutil.ReadFile("server.properties")
+
+		if err != nil {
+			panic(err)
+		}
+
+		serverConfig = config.ParseConfig(string(content))
+		
+		log.Println(serverConfig)
+	}
 
 	if _, err := os.Stat(MAIN_LEVEL_FILE); errors.Is(err, os.ErrNotExist) {
 		log.Println("Generating level...")
