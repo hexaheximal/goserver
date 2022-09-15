@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"runtime"
 	"os/signal"
 	"syscall"
 	"time"
@@ -37,6 +38,10 @@ const (
 // Server code
 
 func main() {
+	if runtime.GOOS == "windows" {
+		log.Fatalln("Windows is not supported.")
+	}
+	
 	log.Println("Starting server...")
 
 	NULL_CLIENT = Client{"", 0, 0, 0, 0, 0, 0, nil}
