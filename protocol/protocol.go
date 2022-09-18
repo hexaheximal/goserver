@@ -462,9 +462,9 @@ func SpawnPlayer(name string, id int, x int, y int, z int, yaw int, pitch int) [
 	buffer[0] = SERVER_SPAWN_PLAYER // Packet ID
 	buffer[1] = byte(id) // Player ID
 	CopyData(2, EncodeString(name), buffer) // Player Name
-	CopyData(2 + STRING_LENGTH, EncodeShort((x << 5) + 16), buffer) // X
-	CopyData(2 + STRING_LENGTH + 2, EncodeShort((y << 5) + 16), buffer) // Y
-	CopyData(2 + STRING_LENGTH + 2 + 2, EncodeShort((z << 5) + 16), buffer) // Z
+	CopyData(2 + STRING_LENGTH, EncodeShort(x), buffer) // X
+	CopyData(2 + STRING_LENGTH + 2, EncodeShort(y), buffer) // Y
+	CopyData(2 + STRING_LENGTH + 2 + 2, EncodeShort(z), buffer) // Z
 	buffer[2 + STRING_LENGTH + 2 + 2 + 2] = byte(yaw) // Yaw (Heading)
 	buffer[2 + STRING_LENGTH + 2 + 2 + 2 + 1] = byte(pitch) // Pitch
 	

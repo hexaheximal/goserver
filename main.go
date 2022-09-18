@@ -179,32 +179,29 @@ func SendInitialData(conn net.Conn, buffer []byte, id int) {
 
 	conn.Write(protocol.LevelFinalize(level)) // Level Finalize
 	
-	clients[id].X = level.Spawnpoint.X
-	clients[id].Y = level.Spawnpoint.Y
-	clients[id].Z = level.Spawnpoint.Z
+	clients[id].X = int(float32(level.Spawnpoint.X) * 32.0)
+	clients[id].Y = int(float32(level.Spawnpoint.Y) * 32.0)
+	clients[id].Z = int(float32(level.Spawnpoint.Z) * 32.0)
 	clients[id].Yaw = level.Spawnpoint.Yaw
 	clients[id].Pitch = level.Spawnpoint.Pitch
 	
 	// Spawn Player
 
-	conn.Write(protocol.SpawnPlayer(username, 0xff, clients[id].X, clients[id].Y, clients[id].Z, clients[id].Yaw, clients[id].Pitch))
+	conn.Write(protocol.SpawnPlayer(username, 0xff, (level.Spawnpoint.X << 5) + 16, (level.Spawnpoint.Y << 5) + 16, (level.Spawnpoint.Z << 5) + 16, clients[id].Yaw, clients[id].Pitch))
 	
-	// TODO: FIX THIS!!!
-	//SendToAllClients(id, protocol.SpawnPlayer(username, id, clients[id].X, clients[id].Y, clients[id].Z, clients[id].Yaw, clients[id].Pitch))
+	SendToAllClients(id, protocol.SpawnPlayer(username, id, clients[id].X, clients[id].Y, clients[id].Z, clients[id].Yaw, clients[id].Pitch))
 
-	joinMessage := protocol.Message(0xff, username+" joined the game")
-
-	SendToAllClients(-1, joinMessage) // Send join message
+	SendToAllClients(-1, protocol.Message(0xff, username + " joined the game")) // Send join message
 	
-	// TODO: FIX THIS!!!
-	/*for i := 0; i < len(clients); i++ {
+	time.Sleep(time.Second * 1)
+	
+	for i := 0; i < len(clients); i++ {
 		if i == id || clients[i] == NULL_CLIENT {
 			continue
 		}
 		
 		conn.Write(protocol.SpawnPlayer(clients[i].Username, i, clients[i].X, clients[i].Y, clients[i].Z, clients[i].Yaw, clients[i].Pitch))
-		//conn.Write(protocol.PositionAndOrientation(i, clients[i].X, clients[i].Y, clients[i].Z, clients[i].Yaw, clients[i].Pitch))
-	}*/
+	}
 }
 
 func HandleMessage(conn net.Conn, buffer []byte, username string, id int) {
@@ -267,9 +264,7 @@ func HandleMessage(conn net.Conn, buffer []byte, username string, id int) {
 		clients[id].Yaw = int(buffer[8])
 		clients[id].Pitch = int(buffer[9])
 		
-		// TODO: FIX THIS!!!
-		//SendToAllClients(id, protocol.PositionAndOrientation(id, x, y, z, clients[id].Yaw, clients[id].Pitch))
-		//SendToAllClients(id, protocol.PositionAndOrientationUpdate(id, clients[id].X, clients[id].Y, clients[id].Z, x, y, z, clients[id].Yaw, clients[id].Pitch))
+		SendToAllClients(id, protocol.PositionAndOrientationUpdate(id, clients[id].X, clients[id].Y, clients[id].Z, x, y, z, clients[id].Yaw, clients[id].Pitch))
 		
 		clients[id].X = x
 		clients[id].Y = y
@@ -319,8 +314,7 @@ func HandleConnection(conn net.Conn) {
 		if err != nil {
 			conn.Close()
 
-			// TODO: FIX THIS!!!
-			//SendToAllClients(-1, protocol.DespawnPlayer(client_index))
+			SendToAllClients(-1, protocol.DespawnPlayer(client_index))
 			SendToAllClients(-1, protocol.Message(0xff, clients[client_index].Username + " left the game"))
 			
 			clients[client_index] = NULL_CLIENT
