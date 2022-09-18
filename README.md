@@ -10,6 +10,7 @@ Features | goserver | Original Server Software
 | Threads | Main thread, Level save thread, and 1 thread for each connection | **A LOT**
 | Game updates | Asynchronous | Tick system
 
+TL;DR goserver is better
 
 # How do I run this on [OS]?
 ## Linux
