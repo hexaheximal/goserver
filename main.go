@@ -226,7 +226,7 @@ func HandleMessage(conn net.Conn, buffer []byte, username string, id int) {
 			block_type = 0
 		}
 
-		if block_type > BLOCK_OBSIDIAN {
+		if block_type > protocol.BLOCK_OBSIDIAN {
 			conn.Write(protocol.Disconnect("Invalid block!"))
 			conn.Close()
 			return
@@ -288,6 +288,7 @@ func HandleMessage(conn net.Conn, buffer []byte, username string, id int) {
 			return
 		}
 
+		log.Println(username + ": " + message)
 		SendToAllClients(-1, protocol.Message(0x00, username+": "+message))
 		return
 	}
