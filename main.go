@@ -289,7 +289,7 @@ func HandleMessage(conn net.Conn, buffer []byte, username string, id int) {
 		}
 
 		log.Println(username + ": " + message)
-		SendToAllClients(-1, protocol.Message(0x00, username+": "+message))
+		SendToAllClients(-1, protocol.Message(id, username+": "+message))
 		return
 	}
 }
