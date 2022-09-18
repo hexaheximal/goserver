@@ -193,8 +193,6 @@ func SendInitialData(conn net.Conn, buffer []byte, id int) {
 
 	SendToAllClients(-1, protocol.Message(0xff, username + " joined the game")) // Send join message
 	
-	time.Sleep(time.Second * 1)
-	
 	for i := 0; i < len(clients); i++ {
 		if i == id || clients[i] == NULL_CLIENT {
 			continue
