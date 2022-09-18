@@ -226,6 +226,12 @@ func HandleMessage(conn net.Conn, buffer []byte, username string, id int) {
 			block_type = 0
 		}
 
+		if block_type > BLOCK_OBSIDIAN {
+			conn.Write(protocol.Disconnect("Invalid block!"))
+			conn.Close()
+			return
+		}
+
 		// Set the block type to grass if the original block type is dirt and there is an air block above it
 
 		if block_type == protocol.BLOCK_DIRT && !level.IsOOB(x, y+1, z) && level.GetBlock(x, y+1, z) == 0 {
