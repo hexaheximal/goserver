@@ -295,6 +295,10 @@ func EncodeString(data string) []byte {
 	}
 	
 	for i = 0; i < len(data); i++ {
+		if i == STRING_LENGTH {
+			break
+		}
+		
 		bytes[i] = input_bytes[i]
 	}
 	
