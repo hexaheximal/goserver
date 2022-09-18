@@ -2,14 +2,14 @@ package main
 
 import (
 	"errors"
-	"goserver/protocol"
 	"goserver/config"
+	"goserver/protocol"
 	"io/ioutil"
 	"log"
 	"net"
 	"os"
-	"runtime"
 	"os/signal"
+	"runtime"
 	"syscall"
 	"time"
 )
@@ -20,12 +20,12 @@ var serverConfig config.Config
 
 type Client struct {
 	Username string
-	ID int
-	X int
-	Y int
-	Z int
-	Yaw int
-	Pitch int
+	ID       int
+	X        int
+	Y        int
+	Z        int
+	Yaw      int
+	Pitch    int
 	Socket   net.Conn
 }
 
@@ -41,29 +41,29 @@ func main() {
 	if runtime.GOOS == "windows" {
 		log.Fatalln("Windows is not supported.")
 	}
-	
+
 	log.Println("Starting server...")
 
 	NULL_CLIENT = Client{"", 0, 0, 0, 0, 0, 0, nil}
 
 	clients = make([]Client, 32)
-	
+
 	if _, err := os.Stat("server.properties"); errors.Is(err, os.ErrNotExist) {
 		log.Println("Creating server.properties...")
-		
+
 		configData := "# Minecraft server properties (goserver)\nserver-name=Minecraft Server\nmotd=Welcome to my Minecraft Server!\npublic=false\nport=25565\nverify-names=false\nmax-players=32\nmax-connections=1\ngrow-trees=false\nadmin-slot=false"
 		err := ioutil.WriteFile("server.properties", []byte(configData), 0644)
-		
+
 		if err != nil {
 			log.Fatalln("Failed to create server.properties:", err)
 		}
-		
+
 		serverConfig = config.ParseConfig(string(configData))
-		
+
 		log.Println(serverConfig)
 	} else {
 		log.Println("Reading server.properties...")
-		
+
 		content, err := ioutil.ReadFile("server.properties")
 
 		if err != nil {
@@ -71,7 +71,7 @@ func main() {
 		}
 
 		serverConfig = config.ParseConfig(string(content))
-		
+
 		log.Println(serverConfig)
 	}
 
@@ -89,7 +89,7 @@ func main() {
 		level = protocol.DeserializeLevel(protocol.DecompressData(content))
 	}
 
-	listen, err := net.Listen("tcp", "127.0.0.1:" + serverConfig.GetString("port"))
+	listen, err := net.Listen("tcp", "127.0.0.1:"+serverConfig.GetString("port"))
 
 	if err != nil {
 		log.Fatalln(err)
@@ -178,26 +178,26 @@ func SendInitialData(conn net.Conn, buffer []byte, id int) {
 	}
 
 	conn.Write(protocol.LevelFinalize(level)) // Level Finalize
-	
+
 	clients[id].X = int(float32(level.Spawnpoint.X) * 32.0)
 	clients[id].Y = int(float32(level.Spawnpoint.Y) * 32.0)
 	clients[id].Z = int(float32(level.Spawnpoint.Z) * 32.0)
 	clients[id].Yaw = level.Spawnpoint.Yaw
 	clients[id].Pitch = level.Spawnpoint.Pitch
-	
+
 	// Spawn Player
 
-	conn.Write(protocol.SpawnPlayer(username, 0xff, (level.Spawnpoint.X << 5) + 16, (level.Spawnpoint.Y << 5) + 16, (level.Spawnpoint.Z << 5) + 16, clients[id].Yaw, clients[id].Pitch))
-	
+	conn.Write(protocol.SpawnPlayer(username, 0xff, (level.Spawnpoint.X<<5)+16, (level.Spawnpoint.Y<<5)+16, (level.Spawnpoint.Z<<5)+16, clients[id].Yaw, clients[id].Pitch))
+
 	SendToAllClients(id, protocol.SpawnPlayer(username, id, clients[id].X, clients[id].Y, clients[id].Z, clients[id].Yaw, clients[id].Pitch))
 
-	SendToAllClients(-1, protocol.Message(0xff, username + " joined the game")) // Send join message
-	
+	SendToAllClients(-1, protocol.Message(0xff, username+" joined the game")) // Send join message
+
 	for i := 0; i < len(clients); i++ {
 		if i == id || clients[i] == NULL_CLIENT {
 			continue
 		}
-		
+
 		conn.Write(protocol.SpawnPlayer(clients[i].Username, i, clients[i].X, clients[i].Y, clients[i].Z, clients[i].Yaw, clients[i].Pitch))
 	}
 }
@@ -253,21 +253,21 @@ func HandleMessage(conn net.Conn, buffer []byte, username string, id int) {
 
 		return
 	}
-	
+
 	if buffer[0] == byte(0x08) {
 		x := protocol.DecodeShort(buffer, 2)
 		y := protocol.DecodeShort(buffer, 4)
 		z := protocol.DecodeShort(buffer, 6)
-		
+
 		clients[id].Yaw = int(buffer[8])
 		clients[id].Pitch = int(buffer[9])
-		
+
 		SendToAllClients(id, protocol.PositionAndOrientationUpdate(id, clients[id].X, clients[id].Y, clients[id].Z, x, y, z, clients[id].Yaw, clients[id].Pitch))
-		
+
 		clients[id].X = x
 		clients[id].Y = y
 		clients[id].Z = z
-		
+
 		return
 	}
 
@@ -313,8 +313,8 @@ func HandleConnection(conn net.Conn) {
 			conn.Close()
 
 			SendToAllClients(-1, protocol.DespawnPlayer(client_index))
-			SendToAllClients(-1, protocol.Message(0xff, clients[client_index].Username + " left the game"))
-			
+			SendToAllClients(-1, protocol.Message(0xff, clients[client_index].Username+" left the game"))
+
 			clients[client_index] = NULL_CLIENT
 
 			log.Println("Closed Connection:", conn.RemoteAddr())
