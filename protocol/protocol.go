@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"bytes"
 	"strings"
+	"crypto/sha256"
 	"time"
 	"log"
 )
@@ -65,6 +66,7 @@ const (
 )
 
 const (
+	HASH_LENGTH = 32
 	STRING_LENGTH = 64
 	BYTE_ARRAY_LENGTH = 1024
 	PROTOCOL_VERSION = 0x07
@@ -72,7 +74,7 @@ const (
 
 const (
 	SERVER_IDENTIFICATION = 0x00
-	SERVER_PING = 0x01
+	SERVER_PING = 0x01 // Unused
 	SERVER_LEVEL_INITIALIZE = 0x02
 	SERVER_LEVEL_DATA_CHUNK = 0x03
 	SERVER_LEVEL_FINALIZE = 0x04
@@ -94,6 +96,11 @@ const (
 	LEVEL_EXPERIMENTAL = 2
 )
 
+const (
+	LEVEL_TYPE_NORMAL = 0 // Normal levels contain the level data and nothing else.
+	LEVEL_TYPE_CHAIN = 1 // Chain levels contain a chain of block updates instead of the level data. Very useful if you need to do a level rollback.
+)
+
 // Protocol types
 
 type Level struct {
@@ -102,6 +109,17 @@ type Level struct {
 	Depth int // Z size
 	Data []byte // block array
 	Spawnpoint Spawnpoint // Spawnpoint
+	Type int // Level type
+	Chain []BlockUpdate // Chain data
+}
+
+type BlockUpdate struct {
+	X int // X
+	Y int // Y
+	Z int // Z
+	ID int // Block ID
+	Name string // Player name (or blank if it is not by a player)
+	PreviousBlock []byte // Hash of the previous block in the chain
 }
 
 type Spawnpoint struct {
@@ -110,6 +128,37 @@ type Spawnpoint struct {
 	Z int
 	Yaw int
 	Pitch int
+}
+
+func (blockUpdate BlockUpdate) Serialize() []byte {
+	buffer := make([]byte, 2 + 2 + 2 + 1 + STRING_LENGTH + HASH_LENGTH)
+	
+	CopyData(0, EncodeShort(blockUpdate.X), buffer) // X
+	CopyData(2, EncodeShort(blockUpdate.Y), buffer) // Y
+	CopyData(4, EncodeShort(blockUpdate.Z), buffer) // Z
+	
+	buffer[6] = byte(blockUpdate.ID) // Block ID
+	
+	CopyData(7, EncodeString(blockUpdate.Name), buffer) // Player name (or blank if it is not by a player)
+	CopyData(7 + STRING_LENGTH, blockUpdate.PreviousBlock, buffer) // Hash of the previous block in the chain
+	
+	return buffer
+}
+
+func DeserializeBlockUpdate(data []byte) BlockUpdate {
+	x := DecodeShort(data, 0) // X
+	y := DecodeShort(data, 2) // Y
+	z := DecodeShort(data, 4) // Z
+	
+	id := int(data[6]) // Block ID
+	
+	name := DecodeString(data, 7) // Player name (or blank if it is not by a player)
+	
+	hashIndex := 7 + STRING_LENGTH
+	hashEndIndex := hashIndex + HASH_LENGTH
+	previousBlock := data[hashIndex:hashEndIndex] // Hash of the previous block in the chain
+	
+	return BlockUpdate{x, y, z, id, name, previousBlock}
 }
 
 func (level Level) IsOOB(x int, y int, z int) bool {
@@ -124,8 +173,27 @@ func (level Level) GetBlock(x int, y int, z int) int {
 	return int(level.Data[(y * level.Depth + z) * level.Width + x])
 }
 
-func (level Level) SetBlock(x int, y int, z int, id int) {
+func (level *Level) SetBlock(x int, y int, z int, id int) {
+	level.SetBlockPlayer(x, y, z, id, "")
+}
+
+func (level *Level) SetBlockPlayer(x int, y int, z int, id int, name string) {	
 	level.Data[(y * level.Depth + z) * level.Width + x] = byte(id)
+	
+	if level.Type == LEVEL_TYPE_CHAIN {
+		block := BlockUpdate{x, y, z, id, name, make([]byte, 32)}
+		
+		if len(level.Chain) != 0 {
+			previousBlockHash := sha256.Sum256(level.Chain[len(level.Chain) - 1].Serialize())
+			block.PreviousBlock = previousBlockHash[:]
+		}
+		
+		if name != "" {
+			log.Println(block, len(level.Chain))
+		}
+		
+		level.Chain = append(level.Chain, block)
+	}
 }
 
 func (level Level) Encode() []byte {
@@ -138,6 +206,31 @@ func (level Level) Encode() []byte {
 }
 
 func (level Level) Serialize() []byte {
+	if level.Type == LEVEL_TYPE_CHAIN {
+		blockSize := 2 + 2 + 2 + 1 + STRING_LENGTH + HASH_LENGTH
+		
+		buffer := make([]byte, 5 + 2 + 2 + 2 + 2 + 2 + 2 + 1 + 1 + (blockSize * len(level.Chain)))
+	
+		CopyData(0, []byte("CHAIN"), buffer) // Header
+		
+		CopyData(5, EncodeShort(level.Width), buffer) // Width
+		CopyData(7, EncodeShort(level.Height), buffer) // Height
+		CopyData(9, EncodeShort(level.Depth), buffer) // Depth
+	
+		CopyData(11, EncodeShort(level.Spawnpoint.X), buffer) // Spawn X
+		CopyData(13, EncodeShort(level.Spawnpoint.Y), buffer) // Spawn Y
+		CopyData(15, EncodeShort(level.Spawnpoint.Z), buffer) // Spawn Z
+	
+		buffer[17] = byte(level.Spawnpoint.Yaw) // Spawn Yaw
+		buffer[18] = byte(level.Spawnpoint.Pitch) // Spawn Pitch
+
+		for i := 0; i < len(level.Chain); i++ {
+			CopyData(19 + (blockSize * i), level.Chain[i].Serialize(), buffer) // Block
+		}
+		
+		return buffer
+	}
+	
 	buffer := make([]byte, 2 + 2 + 2 + 2 + 2 + 2 + 1 + 1 + len(level.Data))
 	
 	CopyData(0, EncodeShort(level.Width), buffer) // Width
@@ -157,7 +250,74 @@ func (level Level) Serialize() []byte {
 }
 
 func DeserializeLevel(data []byte) Level {
-	header_size := 2 + 2 + 2 + 2 + 2 + 2 + 1 + 1 // short, short, short (Level Size), short, short, short (Spawnpoint Position), byte, byte (Spawnpoint Yaw & Pitch)
+	if bytes.Equal(data[0:5], []byte("CHAIN")) {
+		//log.Println("DeserializeLevel(): Level type: Chain")
+		
+		blockSize := 2 + 2 + 2 + 1 + STRING_LENGTH + HASH_LENGTH
+		headerSize := 5 + 2 + 2 + 2 + 2 + 2 + 2 + 1 + 1
+		
+		//log.Println("DeserializeLevel(): Deserializing level header...")
+		
+		width := DecodeShort(data, 5) // Width
+		height := DecodeShort(data, 5 + 2) // Height
+		depth := DecodeShort(data, 5 + 4) // Depth
+		
+		spawnX := DecodeShort(data, 5 + 6) // Spawn X
+		spawnY := DecodeShort(data, 5 + 8) // Spawn Y
+		spawnZ := DecodeShort(data, 5 + 10) // Spawn Z
+		
+		spawnYaw := int(data[5 + 12]) // Spawn Yaw
+		spawnPitch := int(data[5 + 13]) // Spawn Pitch
+		
+		block_data := data[headerSize:]
+		
+		level := Level{
+			width,
+			height,
+			depth,
+			make([]byte, width * height * depth),
+			Spawnpoint{spawnX, spawnY, spawnZ, spawnYaw, spawnPitch},
+			LEVEL_TYPE_CHAIN,
+			make([]BlockUpdate, 0),
+		}
+		
+		blocks := int(float32(len(block_data)) / float32(blockSize))
+		
+		//log.Println("DeserializeLevel(): Deserializing and Iterating block updates...")
+		
+		for i := 0; i < blocks; i++ {
+			startIndex := blockSize * i
+			endIndex := startIndex + blockSize
+			block := DeserializeBlockUpdate(block_data[startIndex:endIndex])
+			blockHash := sha256.Sum256(block.Serialize())
+			
+			if len(level.Chain) > 0 {
+				previousBlockHash := sha256.Sum256(level.Chain[len(level.Chain) - 1].Serialize())
+				
+				if !bytes.Equal(block.PreviousBlock, previousBlockHash[:]) {
+					log.Fatalln("Block", blockHash, "contains an invalid previous block hash!")
+				}
+			}
+			
+			level.Chain = append(level.Chain, block)
+			
+			if level.IsOOB(block.X, block.Y, block.Z) {
+				log.Fatalln("Block", blockHash, "contains an invalid position!")
+			}
+			
+			level.Data[(block.Y * level.Depth + block.Z) * level.Width + block.X] = byte(block.ID)
+		}
+		
+		//log.Println("DeserializeLevel(): Finished!")
+		
+		return level
+	}
+	
+	headerSize := 2 + 2 + 2 + 2 + 2 + 2 + 1 + 1 // short, short, short (Level Size), short, short, short (Spawnpoint Position), byte, byte (Spawnpoint Yaw & Pitch)
+	
+	//log.Println("DeserializeLevel(): Level type: Normal")
+	
+	//log.Println("DeserializeLevel(): Deserializing level header...")
 	
 	width := DecodeShort(data, 0) // Width
 	height := DecodeShort(data, 2) // Height
@@ -170,32 +330,42 @@ func DeserializeLevel(data []byte) Level {
 	spawnYaw := int(data[12]) // Spawn Yaw
 	spawnPitch := int(data[13]) // Spawn Pitch
 	
-	
-	
-	return Level{
+	level := Level{
 		width,
 		height,
 		depth,
-		data[header_size:],
+		data[headerSize:],
 		Spawnpoint{spawnX, spawnY, spawnZ, spawnYaw, spawnPitch},
+		LEVEL_TYPE_NORMAL,
+		make([]BlockUpdate, 0),
 	}
+	
+	//log.Println("DeserializeLevel(): Finished!")
+	
+	return level
 }
 
-func GenerateLevel(width int, height int, depth int, level_type int) Level {
+func GenerateLevel(width int, height int, depth int, level_generation_type int, level_type int) Level {
+	//if level_type == LEVEL_TYPE_CHAIN {
+	//	panic("Chain levels are not implemented yet!")
+	//}
+	
 	level := Level{
 		width,
 		height,
 		depth,
 		make([]byte, width * height * depth),
 		Spawnpoint{int(float32(width) / 2.0), 0, int(float32(depth) / 2.0), 0, 0},
+		level_type,
+		make([]BlockUpdate, 0),
 	}
 	
-	if level_type == LEVEL_FLAT {
-		FlatLevelGenerator(level)
+	if level_generation_type == LEVEL_FLAT {
+		FlatLevelGenerator(&level)
 	}
 	
-	if level_type == LEVEL_EXPERIMENTAL {
-		ExperimentalLevelGenerator(level)
+	if level_generation_type == LEVEL_EXPERIMENTAL {
+		ExperimentalLevelGenerator(&level)
 	}
 	
 	for y := 0; y < height; y++ {
@@ -208,7 +378,7 @@ func GenerateLevel(width int, height int, depth int, level_type int) Level {
 	return level
 }
 
-func FlatLevelGenerator(level Level) {
+func FlatLevelGenerator(level *Level) {
 	for y := 0; y < 5; y++ {
 		for x := 0; x < level.Width; x++ {
 			for z := 0; z < level.Depth; z++ {
@@ -232,7 +402,7 @@ func FlatLevelGenerator(level Level) {
 	}
 }
 
-func ExperimentalLevelGenerator(level Level) {
+func ExperimentalLevelGenerator(level *Level) {
 	seed := time.Now().UnixNano()
 	
 	log.Println("Level seed:", seed)

@@ -1,7 +1,9 @@
 package main
 
 import (
+	"crypto/sha256"
 	"errors"
+	"fmt"
 	"goserver/config"
 	"goserver/protocol"
 	"io/ioutil"
@@ -42,11 +44,53 @@ func main() {
 		log.Fatalln("Windows is not supported.")
 	}
 
+	if len(os.Args) > 1 && os.Args[1] == "levelhistory" {
+		if _, err := os.Stat(MAIN_LEVEL_FILE); errors.Is(err, os.ErrNotExist) {
+			log.Fatalln("The level file does not exist!")
+		} else {
+			content, err := ioutil.ReadFile(MAIN_LEVEL_FILE)
+
+			if err != nil {
+				panic(err)
+			}
+
+			level = protocol.DeserializeLevel(protocol.DecompressData(content))
+
+			if level.Type == protocol.LEVEL_TYPE_NORMAL {
+				log.Fatalln("Level history is only available in chain levels.")
+			}
+
+			for i := 0; i < len(level.Chain); i++ {
+				block := level.Chain[i]
+
+				if block.Name == "" {
+					if block.ID == 0 {
+						fmt.Printf("%x: Block at %d, %d, %d removed\n", sha256.Sum256(block.Serialize()), block.X, block.Y, block.Z)
+					} else {
+						fmt.Printf("%x: Block at %d, %d, %d set to ID %d\n", sha256.Sum256(block.Serialize()), block.X, block.Y, block.Z, block.ID)
+					}
+
+					continue
+				}
+
+				if block.ID == 0 {
+					fmt.Printf("%x: Block at %d, %d, %d removed by %s\n", sha256.Sum256(block.Serialize()), block.X, block.Y, block.Z, block.Name)
+				} else {
+					fmt.Printf("%x: Block at %d, %d, %d set to ID %d by %s\n", sha256.Sum256(block.Serialize()), block.X, block.Y, block.Z, block.ID, block.Name)
+				}
+			}
+		}
+
+		return
+	}
+
 	log.Println("Starting server...")
 
 	NULL_CLIENT = Client{"", 0, 0, 0, 0, 0, 0, nil}
 
 	clients = make([]Client, 32)
+
+	// Load config
 
 	if _, err := os.Stat("server.properties"); errors.Is(err, os.ErrNotExist) {
 		log.Println("Creating server.properties...")
@@ -59,8 +103,6 @@ func main() {
 		}
 
 		serverConfig = config.ParseConfig(string(configData))
-
-		log.Println(serverConfig)
 	} else {
 		log.Println("Reading server.properties...")
 
@@ -71,13 +113,20 @@ func main() {
 		}
 
 		serverConfig = config.ParseConfig(string(content))
-
-		log.Println(serverConfig)
 	}
+
+	// Load level
 
 	if _, err := os.Stat(MAIN_LEVEL_FILE); errors.Is(err, os.ErrNotExist) {
 		log.Println("Generating level...")
-		level = protocol.GenerateLevel(128, 64, 128, protocol.LEVEL_EXPERIMENTAL)
+
+		levelType := protocol.LEVEL_TYPE_NORMAL
+
+		if len(os.Args) > 1 && os.Args[1] == "--chain-level" {
+			levelType = protocol.LEVEL_TYPE_CHAIN
+		}
+
+		level = protocol.GenerateLevel(128, 64, 128, protocol.LEVEL_EXPERIMENTAL, levelType)
 	} else {
 		log.Println("Loading level...")
 		content, err := ioutil.ReadFile(MAIN_LEVEL_FILE)
@@ -238,8 +287,8 @@ func HandleMessage(conn net.Conn, buffer []byte, username string, id int) {
 			block_type = protocol.BLOCK_GRASS
 		}
 
-		level.SetBlock(x, y, z, block_type)
-		log.Println(x, y, z, "updated with ID", block_type)
+		level.SetBlockPlayer(x, y, z, block_type, username)
+		//log.Println(x, y, z, "updated with ID", block_type)
 
 		SendToAllClients(-1, protocol.SetBlock(x, y, z, block_type))
 
