@@ -22,12 +22,12 @@ var serverConfig config.Config
 
 type Client struct {
 	Username string
-	ID       int
+	ID       byte
 	X        int
 	Y        int
 	Z        int
-	Yaw      int
-	Pitch    int
+	Yaw      byte
+	Pitch    byte
 	Socket   net.Conn
 }
 
@@ -196,9 +196,13 @@ func LevelSaveThread() {
 	}
 }
 
-func SendToAllClients(exclude int, data []byte) {
+func SendToAllClients(exclude byte, data []byte) {
 	for i := 0; i < len(clients); i++ {
-		if clients[i] == NULL_CLIENT || i == exclude {
+		if clients[i] == NULL_CLIENT {
+			continue
+		}
+
+		if exclude != 0xff && byte(i) == exclude {
 			continue
 		}
 
@@ -206,7 +210,7 @@ func SendToAllClients(exclude int, data []byte) {
 	}
 }
 
-func SendInitialData(conn net.Conn, buffer []byte, id int) {
+func SendInitialData(conn net.Conn, buffer []byte, id byte) {
 	if buffer[1] != byte(0x07) {
 		conn.Write(protocol.Disconnect("Incorrect protocol version!"))
 		conn.Close()
@@ -240,18 +244,18 @@ func SendInitialData(conn net.Conn, buffer []byte, id int) {
 
 	SendToAllClients(id, protocol.SpawnPlayer(username, id, clients[id].X, clients[id].Y, clients[id].Z, clients[id].Yaw, clients[id].Pitch))
 
-	SendToAllClients(-1, protocol.Message(0xff, username+" joined the game")) // Send join message
+	SendToAllClients(0xff, protocol.Message(0xff, username+" joined the game")) // Send join message
 
 	for i := 0; i < len(clients); i++ {
-		if i == id || clients[i] == NULL_CLIENT {
+		if i == int(id) || clients[i] == NULL_CLIENT {
 			continue
 		}
 
-		conn.Write(protocol.SpawnPlayer(clients[i].Username, i, clients[i].X, clients[i].Y, clients[i].Z, clients[i].Yaw, clients[i].Pitch))
+		conn.Write(protocol.SpawnPlayer(clients[i].Username, byte(i), clients[i].X, clients[i].Y, clients[i].Z, clients[i].Yaw, clients[i].Pitch))
 	}
 }
 
-func HandleMessage(conn net.Conn, buffer []byte, username string, id int) {
+func HandleMessage(conn net.Conn, buffer []byte, username string, id byte) {
 	if buffer[0] == byte(0x00) && buffer[1] != byte(0x00) {
 		SendInitialData(conn, buffer, id)
 		return
@@ -268,11 +272,10 @@ func HandleMessage(conn net.Conn, buffer []byte, username string, id int) {
 			return
 		}
 
-		update_type := int(buffer[7])
-		block_type := int(buffer[8])
+		block_type := buffer[8]
 
-		if update_type != 0x01 {
-			block_type = 0
+		if buffer[7] != 0x01 {
+			block_type = protocol.BLOCK_AIR
 		}
 
 		if block_type > protocol.BLOCK_OBSIDIAN {
@@ -290,20 +293,20 @@ func HandleMessage(conn net.Conn, buffer []byte, username string, id int) {
 		level.SetBlockPlayer(x, y, z, block_type, username)
 		//log.Println(x, y, z, "updated with ID", block_type)
 
-		SendToAllClients(-1, protocol.SetBlock(x, y, z, block_type))
+		SendToAllClients(0xff, protocol.SetBlock(x, y, z, block_type))
 
 		// If there is grass below the block (and block_type is not air, glass, or leaves), set it to dirt
 
 		if block_type != protocol.BLOCK_AIR && block_type != protocol.BLOCK_GLASS && block_type != protocol.BLOCK_LEAVES && !level.IsOOB(x, y-1, z) && level.GetBlock(x, y-1, z) == protocol.BLOCK_GRASS {
 			level.SetBlock(x, y-1, z, protocol.BLOCK_DIRT)
-			SendToAllClients(-1, protocol.SetBlock(x, y-1, z, protocol.BLOCK_DIRT))
+			SendToAllClients(0xff, protocol.SetBlock(x, y-1, z, protocol.BLOCK_DIRT))
 		}
 
 		// If there is dirt below the block (and block_type is air), set it to grass
 
 		if block_type == protocol.BLOCK_AIR && !level.IsOOB(x, y-1, z) && level.GetBlock(x, y-1, z) == protocol.BLOCK_DIRT {
 			level.SetBlock(x, y-1, z, protocol.BLOCK_GRASS)
-			SendToAllClients(-1, protocol.SetBlock(x, y-1, z, protocol.BLOCK_GRASS))
+			SendToAllClients(0xff, protocol.SetBlock(x, y-1, z, protocol.BLOCK_GRASS))
 		}
 
 		return
@@ -314,8 +317,8 @@ func HandleMessage(conn net.Conn, buffer []byte, username string, id int) {
 		y := protocol.DecodeShort(buffer, 4)
 		z := protocol.DecodeShort(buffer, 6)
 
-		clients[id].Yaw = int(buffer[8])
-		clients[id].Pitch = int(buffer[9])
+		clients[id].Yaw = buffer[8]
+		clients[id].Pitch = buffer[9]
 
 		SendToAllClients(id, protocol.PositionAndOrientationUpdate(id, clients[id].X, clients[id].Y, clients[id].Z, x, y, z, clients[id].Yaw, clients[id].Pitch))
 
@@ -338,22 +341,24 @@ func HandleMessage(conn net.Conn, buffer []byte, username string, id int) {
 		}
 
 		log.Println(username + ": " + message)
-		SendToAllClients(-1, protocol.Message(id, username+": "+message))
+		SendToAllClients(0xff, protocol.Message(id, username+": "+message))
 		return
 	}
 }
 
 func HandleConnection(conn net.Conn) {
-	client_index := -1
+	client_index := byte(0)
+	slot_assigned := false
 
-	for i := 0; i < len(clients); i++ {
+	for i := byte(0); i < byte(len(clients)); i++ {
 		if clients[i] == NULL_CLIENT {
 			client_index = i
+			slot_assigned = true
 			break
 		}
 	}
 
-	if client_index == -1 {
+	if slot_assigned == false {
 		conn.Write(protocol.Disconnect("The server is full!"))
 		log.Println("Closed Connection:", conn.RemoteAddr())
 		return
@@ -368,8 +373,8 @@ func HandleConnection(conn net.Conn) {
 		if err != nil {
 			conn.Close()
 
-			SendToAllClients(-1, protocol.DespawnPlayer(client_index))
-			SendToAllClients(-1, protocol.Message(0xff, clients[client_index].Username+" left the game"))
+			SendToAllClients(0xff, protocol.DespawnPlayer(client_index))
+			SendToAllClients(0xff, protocol.Message(0xff, clients[client_index].Username+" left the game"))
 
 			clients[client_index] = NULL_CLIENT
 

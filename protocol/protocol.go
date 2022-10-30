@@ -117,7 +117,7 @@ type BlockUpdate struct {
 	X int // X
 	Y int // Y
 	Z int // Z
-	ID int // Block ID
+	ID byte // Block ID
 	Name string // Player name (or blank if it is not by a player)
 	PreviousBlock []byte // Hash of the previous block in the chain
 }
@@ -126,8 +126,8 @@ type Spawnpoint struct {
 	X int
 	Y int
 	Z int
-	Yaw int
-	Pitch int
+	Yaw byte
+	Pitch byte
 }
 
 func (blockUpdate BlockUpdate) Serialize() []byte {
@@ -137,7 +137,7 @@ func (blockUpdate BlockUpdate) Serialize() []byte {
 	CopyData(2, EncodeShort(blockUpdate.Y), buffer) // Y
 	CopyData(4, EncodeShort(blockUpdate.Z), buffer) // Z
 	
-	buffer[6] = byte(blockUpdate.ID) // Block ID
+	buffer[6] = blockUpdate.ID // Block ID
 	
 	CopyData(7, EncodeString(blockUpdate.Name), buffer) // Player name (or blank if it is not by a player)
 	CopyData(7 + STRING_LENGTH, blockUpdate.PreviousBlock, buffer) // Hash of the previous block in the chain
@@ -150,7 +150,7 @@ func DeserializeBlockUpdate(data []byte) BlockUpdate {
 	y := DecodeShort(data, 2) // Y
 	z := DecodeShort(data, 4) // Z
 	
-	id := int(data[6]) // Block ID
+	id := data[6] // Block ID
 	
 	name := DecodeString(data, 7) // Player name (or blank if it is not by a player)
 	
@@ -173,12 +173,12 @@ func (level Level) GetBlock(x int, y int, z int) int {
 	return int(level.Data[(y * level.Depth + z) * level.Width + x])
 }
 
-func (level *Level) SetBlock(x int, y int, z int, id int) {
+func (level *Level) SetBlock(x int, y int, z int, id byte) {
 	level.SetBlockPlayer(x, y, z, id, "")
 }
 
-func (level *Level) SetBlockPlayer(x int, y int, z int, id int, name string) {	
-	level.Data[(y * level.Depth + z) * level.Width + x] = byte(id)
+func (level *Level) SetBlockPlayer(x int, y int, z int, id byte, name string) {	
+	level.Data[(y * level.Depth + z) * level.Width + x] = id
 	
 	if level.Type == LEVEL_TYPE_CHAIN {
 		block := BlockUpdate{x, y, z, id, name, make([]byte, 32)}
@@ -266,8 +266,8 @@ func DeserializeLevel(data []byte) Level {
 		spawnY := DecodeShort(data, 5 + 8) // Spawn Y
 		spawnZ := DecodeShort(data, 5 + 10) // Spawn Z
 		
-		spawnYaw := int(data[5 + 12]) // Spawn Yaw
-		spawnPitch := int(data[5 + 13]) // Spawn Pitch
+		spawnYaw := data[5 + 12] // Spawn Yaw
+		spawnPitch := data[5 + 13] // Spawn Pitch
 		
 		block_data := data[headerSize:]
 		
@@ -327,8 +327,8 @@ func DeserializeLevel(data []byte) Level {
 	spawnY := DecodeShort(data, 8) // Spawn Y
 	spawnZ := DecodeShort(data, 10) // Spawn Z
 	
-	spawnYaw := int(data[12]) // Spawn Yaw
-	spawnPitch := int(data[13]) // Spawn Pitch
+	spawnYaw := data[12] // Spawn Yaw
+	spawnPitch := data[13] // Spawn Pitch
 	
 	level := Level{
 		width,
@@ -626,26 +626,26 @@ func LevelFinalize(level Level) []byte {
 	return buffer
 }
 
-func SpawnPlayer(name string, id int, x int, y int, z int, yaw int, pitch int) []byte {
+func SpawnPlayer(name string, id byte, x int, y int, z int, yaw byte, pitch byte) []byte {
 	buffer := make([]byte, 1 + 1 + STRING_LENGTH + 2 + 2 + 2 + 1 + 1)
 	
 	buffer[0] = SERVER_SPAWN_PLAYER // Packet ID
-	buffer[1] = byte(id) // Player ID
+	buffer[1] = id // Player ID
 	CopyData(2, EncodeString(name), buffer) // Player Name
 	CopyData(2 + STRING_LENGTH, EncodeShort(x), buffer) // X
 	CopyData(2 + STRING_LENGTH + 2, EncodeShort(y), buffer) // Y
 	CopyData(2 + STRING_LENGTH + 2 + 2, EncodeShort(z), buffer) // Z
-	buffer[2 + STRING_LENGTH + 2 + 2 + 2] = byte(yaw) // Yaw (Heading)
-	buffer[2 + STRING_LENGTH + 2 + 2 + 2 + 1] = byte(pitch) // Pitch
+	buffer[2 + STRING_LENGTH + 2 + 2 + 2] = yaw // Yaw (Heading)
+	buffer[2 + STRING_LENGTH + 2 + 2 + 2 + 1] = pitch // Pitch
 	
 	return buffer
 }
 
-func DespawnPlayer(id int) []byte {
+func DespawnPlayer(id byte) []byte {
 	buffer := make([]byte, 1 + 1)
 	
 	buffer[0] = SERVER_DESPAWN_PLAYER // Packet ID
-	buffer[1] = byte(id) // Player ID
+	buffer[1] = id // Player ID
 	
 	return buffer
 }
@@ -659,24 +659,24 @@ func Disconnect(reason string) []byte {
 	return buffer
 }
 
-func Message(id int, message string) []byte {
+func Message(id byte, message string) []byte {
 	buffer := make([]byte, 1 + 1 + STRING_LENGTH)
 	
 	buffer[0] = SERVER_MESSAGE // Packet ID
-	buffer[1] = byte(id) // Player ID
+	buffer[1] = id // Player ID
 	CopyData(2, EncodeString(message), buffer) // Message
 	
 	return buffer
 }
 
-func SetBlock(x int, y int, z int, id int) []byte {
+func SetBlock(x int, y int, z int, id byte) []byte {
 	buffer := make([]byte, 1 + 2 + 2 + 2 + 1)
 	
 	buffer[0] = SERVER_SET_BLOCK // Packet ID
 	CopyData(1, EncodeShort(x), buffer) // X
 	CopyData(3, EncodeShort(y), buffer) // Y
 	CopyData(5, EncodeShort(z), buffer) // Z
-	buffer[7] = byte(id) // Block Type
+	buffer[7] = id // Block Type
 	
 	return buffer
 }
@@ -695,18 +695,18 @@ func PositionAndOrientation(id int, x int, y int, z int, yaw int, pitch int) []b
 	return buffer
 }
 
-func PositionAndOrientationUpdate(id int, oldX int, oldY int, oldZ int, newX int, newY int, newZ int, yaw int, pitch int) []byte {
+func PositionAndOrientationUpdate(id byte, oldX int, oldY int, oldZ int, newX int, newY int, newZ int, yaw byte, pitch byte) []byte {
 	buffer := make([]byte, 1 + 1 + 1 + 1 + 1 + 1 + 1)
 	
 	buffer[0] = SERVER_POSITION_AND_ORIENTATION_UPDATE // Packet ID
-	buffer[1] = byte(id) // Player ID
+	buffer[1] = id // Player ID
 	
 	buffer[2] = byte(newX - oldX)// Change in X
 	buffer[3] = byte(newY - oldY) // Change in Y
 	buffer[4] = byte(newZ - oldZ) // Change in Z
 	
-	buffer[5] = byte(yaw) // Yaw
-	buffer[6] = byte(pitch) // Pitch
+	buffer[5] = yaw // Yaw
+	buffer[6] = pitch // Pitch
 	
 	return buffer
 }
