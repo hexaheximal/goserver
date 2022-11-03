@@ -188,10 +188,6 @@ func (level *Level) SetBlockPlayer(x int, y int, z int, id byte, name string) {
 			block.PreviousBlock = previousBlockHash[:]
 		}
 		
-		if name != "" {
-			log.Println(block, len(level.Chain))
-		}
-		
 		level.Chain = append(level.Chain, block)
 	}
 }
@@ -209,42 +205,46 @@ func (level Level) Serialize() []byte {
 	if level.Type == LEVEL_TYPE_CHAIN {
 		blockSize := 2 + 2 + 2 + 1 + STRING_LENGTH + HASH_LENGTH
 		
-		buffer := make([]byte, 5 + 2 + 2 + 2 + 2 + 2 + 2 + 1 + 1 + (blockSize * len(level.Chain)))
+		buffer := make([]byte, 5 + 1 + 2 + 2 + 2 + 2 + 2 + 2 + 1 + 1 + (blockSize * len(level.Chain)))
 	
 		CopyData(0, []byte("CHAIN"), buffer) // Header
+		buffer[5] = 0x01 // Format Version
 		
-		CopyData(5, EncodeShort(level.Width), buffer) // Width
-		CopyData(7, EncodeShort(level.Height), buffer) // Height
-		CopyData(9, EncodeShort(level.Depth), buffer) // Depth
+		CopyData(6, EncodeShort(level.Width), buffer) // Width
+		CopyData(8, EncodeShort(level.Height), buffer) // Height
+		CopyData(10, EncodeShort(level.Depth), buffer) // Depth
 	
-		CopyData(11, EncodeShort(level.Spawnpoint.X), buffer) // Spawn X
-		CopyData(13, EncodeShort(level.Spawnpoint.Y), buffer) // Spawn Y
-		CopyData(15, EncodeShort(level.Spawnpoint.Z), buffer) // Spawn Z
+		CopyData(12, EncodeShort(level.Spawnpoint.X), buffer) // Spawn X
+		CopyData(14, EncodeShort(level.Spawnpoint.Y), buffer) // Spawn Y
+		CopyData(16, EncodeShort(level.Spawnpoint.Z), buffer) // Spawn Z
 	
-		buffer[17] = byte(level.Spawnpoint.Yaw) // Spawn Yaw
-		buffer[18] = byte(level.Spawnpoint.Pitch) // Spawn Pitch
+		buffer[18] = byte(level.Spawnpoint.Yaw) // Spawn Yaw
+		buffer[19] = byte(level.Spawnpoint.Pitch) // Spawn Pitch
 
 		for i := 0; i < len(level.Chain); i++ {
-			CopyData(19 + (blockSize * i), level.Chain[i].Serialize(), buffer) // Block
+			CopyData(20 + (blockSize * i), level.Chain[i].Serialize(), buffer) // Block
 		}
 		
 		return buffer
 	}
 	
-	buffer := make([]byte, 2 + 2 + 2 + 2 + 2 + 2 + 1 + 1 + len(level.Data))
+	buffer := make([]byte, 5 + 1 + 2 + 2 + 2 + 2 + 2 + 2 + 1 + 1 + len(level.Data))
 	
-	CopyData(0, EncodeShort(level.Width), buffer) // Width
-	CopyData(2, EncodeShort(level.Height), buffer) // Height
-	CopyData(4, EncodeShort(level.Depth), buffer) // Depth
+	CopyData(0, []byte("LEVEL"), buffer) // Header
+	buffer[5] = 0x01 // Format Version
 	
-	CopyData(6, EncodeShort(level.Spawnpoint.X), buffer) // Spawn X
-	CopyData(8, EncodeShort(level.Spawnpoint.Y), buffer) // Spawn Y
-	CopyData(10, EncodeShort(level.Spawnpoint.Z), buffer) // Spawn Z
+	CopyData(6, EncodeShort(level.Width), buffer) // Width
+	CopyData(8, EncodeShort(level.Height), buffer) // Height
+	CopyData(10, EncodeShort(level.Depth), buffer) // Depth
 	
-	buffer[12] = byte(level.Spawnpoint.Yaw) // Spawn Yaw
-	buffer[13] = byte(level.Spawnpoint.Pitch) // Spawn Pitch
+	CopyData(12, EncodeShort(level.Spawnpoint.X), buffer) // Spawn X
+	CopyData(14, EncodeShort(level.Spawnpoint.Y), buffer) // Spawn Y
+	CopyData(16, EncodeShort(level.Spawnpoint.Z), buffer) // Spawn Z
 	
-	CopyData(14, level.Data, buffer)
+	buffer[18] = byte(level.Spawnpoint.Yaw) // Spawn Yaw
+	buffer[19] = byte(level.Spawnpoint.Pitch) // Spawn Pitch
+	
+	CopyData(20, level.Data, buffer)
 	
 	return buffer
 }
@@ -254,20 +254,24 @@ func DeserializeLevel(data []byte) Level {
 		//log.Println("DeserializeLevel(): Level type: Chain")
 		
 		blockSize := 2 + 2 + 2 + 1 + STRING_LENGTH + HASH_LENGTH
-		headerSize := 5 + 2 + 2 + 2 + 2 + 2 + 2 + 1 + 1
+		headerSize := 5 + 1 + 2 + 2 + 2 + 2 + 2 + 2 + 1 + 1
 		
 		//log.Println("DeserializeLevel(): Deserializing level header...")
 		
-		width := DecodeShort(data, 5) // Width
-		height := DecodeShort(data, 5 + 2) // Height
-		depth := DecodeShort(data, 5 + 4) // Depth
+		if data[5] != 0x01 {
+			log.Fatalln("Error: Invalid level format version! Please update goserver!")
+		}
 		
-		spawnX := DecodeShort(data, 5 + 6) // Spawn X
-		spawnY := DecodeShort(data, 5 + 8) // Spawn Y
-		spawnZ := DecodeShort(data, 5 + 10) // Spawn Z
+		width := DecodeShort(data, 6) // Width
+		height := DecodeShort(data, 6 + 2) // Height
+		depth := DecodeShort(data, 6 + 4) // Depth
 		
-		spawnYaw := data[5 + 12] // Spawn Yaw
-		spawnPitch := data[5 + 13] // Spawn Pitch
+		spawnX := DecodeShort(data, 6 + 6) // Spawn X
+		spawnY := DecodeShort(data, 6 + 8) // Spawn Y
+		spawnZ := DecodeShort(data, 6 + 10) // Spawn Z
+		
+		spawnYaw := data[6 + 12] // Spawn Yaw
+		spawnPitch := data[6 + 13] // Spawn Pitch
 		
 		block_data := data[headerSize:]
 		
@@ -313,36 +317,46 @@ func DeserializeLevel(data []byte) Level {
 		return level
 	}
 	
-	headerSize := 2 + 2 + 2 + 2 + 2 + 2 + 1 + 1 // short, short, short (Level Size), short, short, short (Spawnpoint Position), byte, byte (Spawnpoint Yaw & Pitch)
-	
-	//log.Println("DeserializeLevel(): Level type: Normal")
-	
-	//log.Println("DeserializeLevel(): Deserializing level header...")
-	
-	width := DecodeShort(data, 0) // Width
-	height := DecodeShort(data, 2) // Height
-	depth := DecodeShort(data, 4) // Depth
-	
-	spawnX := DecodeShort(data, 6) // Spawn X
-	spawnY := DecodeShort(data, 8) // Spawn Y
-	spawnZ := DecodeShort(data, 10) // Spawn Z
-	
-	spawnYaw := data[12] // Spawn Yaw
-	spawnPitch := data[13] // Spawn Pitch
-	
-	level := Level{
-		width,
-		height,
-		depth,
-		data[headerSize:],
-		Spawnpoint{spawnX, spawnY, spawnZ, spawnYaw, spawnPitch},
-		LEVEL_TYPE_NORMAL,
-		make([]BlockUpdate, 0),
+	if bytes.Equal(data[0:5], []byte("LEVEL")) {
+		headerSize := 5 + 1 + 2 + 2 + 2 + 2 + 2 + 2 + 1 + 1 // header bytes, byte (format version), short, short, short (Level Size), short, short, short (Spawnpoint Position), byte, byte (Spawnpoint Yaw & Pitch)
+		
+		//log.Println("DeserializeLevel(): Level type: Normal")
+		
+		//log.Println("DeserializeLevel(): Deserializing level header...")
+		
+		if data[5] != 0x01 {
+			log.Fatalln("Error: Invalid level format version! Please update goserver!")
+		}
+		
+		width := DecodeShort(data, 6) // Width
+		height := DecodeShort(data, 8) // Height
+		depth := DecodeShort(data, 10) // Depth
+		
+		spawnX := DecodeShort(data, 12) // Spawn X
+		spawnY := DecodeShort(data, 14) // Spawn Y
+		spawnZ := DecodeShort(data, 16) // Spawn Z
+		
+		spawnYaw := data[18] // Spawn Yaw
+		spawnPitch := data[19] // Spawn Pitch
+		
+		level := Level{
+			width,
+			height,
+			depth,
+			data[headerSize:],
+			Spawnpoint{spawnX, spawnY, spawnZ, spawnYaw, spawnPitch},
+			LEVEL_TYPE_NORMAL,
+			make([]BlockUpdate, 0),
+		}
+		
+		//log.Println("DeserializeLevel(): Finished!")
+		
+		return level
 	}
 	
-	//log.Println("DeserializeLevel(): Finished!")
+	log.Fatalln("Invalid level format!")
 	
-	return level
+	return Level{16, 16, 16, make([]byte, 16 * 16 * 16), Spawnpoint{0, 0, 0, 0, 0}, LEVEL_TYPE_NORMAL, make([]BlockUpdate, 0)}
 }
 
 func GenerateLevel(width int, height int, depth int, level_generation_type int, level_type int) Level {
