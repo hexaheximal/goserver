@@ -48,17 +48,7 @@ func (config Config) GetBoolean(key string) bool {
 		log.Fatalln("Failed to read an option from server.properties: The option", key, "does not exist.")
 	}
 	
-	boolean := false
-	
-	if data == "true" {
-		boolean = true
-	} else if data == "false" {
-		boolean = false
-	} else {
-		log.Fatalln("Failed to read an option from server.properties: The option", key, "contains an invalid boolean value.")
-	}
-	
-	return boolean
+	return data == "true"
 }
 
 func ParseConfig(data string) Config {
