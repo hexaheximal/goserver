@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -243,6 +244,35 @@ func SendInitialData(conn net.Conn, buffer []byte, id byte) {
 	conn.Write(protocol.SpawnPlayer(username, 0xff, (level.Spawnpoint.X<<5)+16, (level.Spawnpoint.Y<<5)+16, (level.Spawnpoint.Z<<5)+16, clients[id].Yaw, clients[id].Pitch))
 
 	SendToAllClients(id, protocol.SpawnPlayer(username, id, clients[id].X, clients[id].Y, clients[id].Z, clients[id].Yaw, clients[id].Pitch))
+
+	if _, err := os.Stat("welcome.txt"); errors.Is(err, os.ErrNotExist) {
+		log.Println("Cannot find welcome.txt, not showing welcome message.")
+	} else {
+		welcomeMessageData, err := ioutil.ReadFile("welcome.txt")
+
+		if err != nil {
+			log.Println("Failed to load welcome.txt, but the file exists! Something is broken!")
+			log.Println("Here is the complete error message:")
+			log.Println(err)
+			return
+		}
+
+		lines := strings.Split(string(welcomeMessageData), "\n")
+
+		// Send the welcome message to the client
+
+		for _, line := range lines {
+			conn.Write(protocol.Message(126, line))
+		}
+
+		// Send a blank line at the end if it wasn't already sent
+
+		log.Println(len(lines[len(lines) - 1]))
+
+		if len(lines[len(lines) - 1]) != 0 {
+			conn.Write(protocol.Message(126, ""))
+		}
+	}
 
 	SendToAllClients(0xff, protocol.Message(0xff, username+" joined the game")) // Send join message
 
