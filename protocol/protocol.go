@@ -169,8 +169,12 @@ func (level Level) IsOOB(x int, y int, z int) bool {
 	return false
 }
 
-func (level Level) GetBlock(x int, y int, z int) int {
-	return int(level.Data[(y * level.Depth + z) * level.Width + x])
+func (level Level) GetBlock(x int, y int, z int) byte {
+	if level.IsOOB(x, y, z) {
+		return BLOCK_AIR
+	}
+
+	return level.Data[(y * level.Depth + z) * level.Width + x]
 }
 
 func (level *Level) SetBlock(x int, y int, z int, id byte) {

@@ -314,30 +314,12 @@ func HandleMessage(conn net.Conn, buffer []byte, username string, id byte) {
 			return
 		}
 
-		// Set the block type to grass if the original block type is dirt and there is an air block above it
-
-		if block_type == protocol.BLOCK_DIRT && !level.IsOOB(x, y+1, z) && level.GetBlock(x, y+1, z) == 0 {
-			block_type = protocol.BLOCK_GRASS
+		if block_type == protocol.BLOCK_DIRT && level.GetBlock(x, y + 1, z) == protocol.BLOCK_AIR {
+			SendToAllClients(0xff, protocol.SetBlock(x, y, z, protocol.BLOCK_GRASS))
+			return
 		}
-
-		level.SetBlockPlayer(x, y, z, block_type, username)
-		//log.Println(x, y, z, "updated with ID", block_type)
 
 		SendToAllClients(0xff, protocol.SetBlock(x, y, z, block_type))
-
-		// If there is grass below the block (and block_type is not air, glass, or leaves), set it to dirt
-
-		if block_type != protocol.BLOCK_AIR && block_type != protocol.BLOCK_GLASS && block_type != protocol.BLOCK_LEAVES && !level.IsOOB(x, y-1, z) && level.GetBlock(x, y-1, z) == protocol.BLOCK_GRASS {
-			level.SetBlock(x, y-1, z, protocol.BLOCK_DIRT)
-			SendToAllClients(0xff, protocol.SetBlock(x, y-1, z, protocol.BLOCK_DIRT))
-		}
-
-		// If there is dirt below the block (and block_type is air), set it to grass
-
-		if block_type == protocol.BLOCK_AIR && !level.IsOOB(x, y-1, z) && level.GetBlock(x, y-1, z) == protocol.BLOCK_DIRT {
-			level.SetBlock(x, y-1, z, protocol.BLOCK_GRASS)
-			SendToAllClients(0xff, protocol.SetBlock(x, y-1, z, protocol.BLOCK_GRASS))
-		}
 
 		return
 	}
