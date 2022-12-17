@@ -7,6 +7,8 @@ import (
 	"goserver/blocks"
 	"goserver/config"
 	"goserver/protocol"
+	"goserver/serialization"
+	"goserver/level"
 	"io/ioutil"
 	"log"
 	"net"
@@ -18,7 +20,7 @@ import (
 	"time"
 )
 
-var level protocol.Level
+var serverLevel level.Level
 var clients []Client
 var serverConfig config.Config
 
@@ -56,14 +58,14 @@ func main() {
 				panic(err)
 			}
 
-			level = protocol.DeserializeLevel(protocol.DecompressData(content))
+			serverLevel = level.DeserializeLevel(protocol.DecompressData(content))
 
-			if level.Type == protocol.LEVEL_TYPE_NORMAL {
+			if serverLevel.Type == level.LEVEL_TYPE_NORMAL {
 				log.Fatalln("Level history is only available in chain levels.")
 			}
 
-			for i := 0; i < len(level.Chain); i++ {
-				block := level.Chain[i]
+			for i := 0; i < len(serverLevel.Chain); i++ {
+				block := serverLevel.Chain[i]
 
 				if block.Name == "" {
 					if block.ID == 0 {
@@ -122,13 +124,13 @@ func main() {
 	if _, err := os.Stat(MAIN_LEVEL_FILE); errors.Is(err, os.ErrNotExist) {
 		log.Println("Generating level...")
 
-		levelType := protocol.LEVEL_TYPE_NORMAL
+		levelType := level.LEVEL_TYPE_NORMAL
 
 		if len(os.Args) > 1 && os.Args[1] == "--chain-level" {
-			levelType = protocol.LEVEL_TYPE_CHAIN
+			levelType = level.LEVEL_TYPE_CHAIN
 		}
 
-		level = protocol.GenerateLevel(128, 64, 128, protocol.LEVEL_EXPERIMENTAL, levelType)
+		serverLevel = level.GenerateLevel(128, 64, 128, level.LEVEL_EXPERIMENTAL, levelType)
 	} else {
 		log.Println("Loading level...")
 		content, err := ioutil.ReadFile(MAIN_LEVEL_FILE)
@@ -137,7 +139,7 @@ func main() {
 			panic(err)
 		}
 
-		level = protocol.DeserializeLevel(protocol.DecompressData(content))
+		serverLevel = level.DeserializeLevel(protocol.DecompressData(content))
 	}
 
 	listen, err := net.Listen("tcp", "127.0.0.1:"+serverConfig.GetString("port"))
@@ -182,7 +184,7 @@ func main() {
 func SaveLevel() {
 	log.Println("Saving level...")
 
-	err := ioutil.WriteFile(MAIN_LEVEL_FILE, protocol.CompressData(level.Serialize()), 0644)
+	err := ioutil.WriteFile(MAIN_LEVEL_FILE, protocol.CompressData(serverLevel.Serialize()), 0644)
 
 	if err != nil {
 		log.Println("Failed to save level:", err)
@@ -219,30 +221,30 @@ func SendInitialData(conn net.Conn, buffer []byte, id byte) {
 		return
 	}
 
-	username := protocol.DecodeString(buffer, 2)
+	username := serialization.DecodeString(buffer, 2)
 
 	conn.Write(protocol.ServerIdentification(serverConfig.GetString("server-name"), serverConfig.GetString("motd"), false)) // Server Identification
 
 	conn.Write([]byte{protocol.SERVER_LEVEL_INITIALIZE}) // Level Initialize
 
-	splitCompressedEncodedLevel := protocol.SplitData(protocol.CompressData(level.Encode()), 1024)
+	splitCompressedEncodedLevel := serialization.SplitData(protocol.CompressData(serverLevel.Encode()), 1024)
 
 	for i := 0; i < len(splitCompressedEncodedLevel); i++ {
 		percentage := int((float32(i+1) / float32(len(splitCompressedEncodedLevel))) * 100)
 		conn.Write(protocol.LevelDataChunk(splitCompressedEncodedLevel[i], percentage)) // Level Data Chunk
 	}
 
-	conn.Write(protocol.LevelFinalize(level)) // Level Finalize
+	conn.Write(protocol.LevelFinalize(serverLevel)) // Level Finalize
 
-	clients[id].X = int(float32(level.Spawnpoint.X) * 32.0)
-	clients[id].Y = int(float32(level.Spawnpoint.Y) * 32.0)
-	clients[id].Z = int(float32(level.Spawnpoint.Z) * 32.0)
-	clients[id].Yaw = level.Spawnpoint.Yaw
-	clients[id].Pitch = level.Spawnpoint.Pitch
+	clients[id].X = int(float32(serverLevel.Spawnpoint.X) * 32.0)
+	clients[id].Y = int(float32(serverLevel.Spawnpoint.Y) * 32.0)
+	clients[id].Z = int(float32(serverLevel.Spawnpoint.Z) * 32.0)
+	clients[id].Yaw = serverLevel.Spawnpoint.Yaw
+	clients[id].Pitch = serverLevel.Spawnpoint.Pitch
 
 	// Spawn Player
 
-	conn.Write(protocol.SpawnPlayer(username, 0xff, (level.Spawnpoint.X<<5)+16, (level.Spawnpoint.Y<<5)+16, (level.Spawnpoint.Z<<5)+16, clients[id].Yaw, clients[id].Pitch))
+	conn.Write(protocol.SpawnPlayer(username, 0xff, (serverLevel.Spawnpoint.X<<5)+16, (serverLevel.Spawnpoint.Y<<5)+16, (serverLevel.Spawnpoint.Z<<5)+16, clients[id].Yaw, clients[id].Pitch))
 
 	SendToAllClients(id, protocol.SpawnPlayer(username, id, clients[id].X, clients[id].Y, clients[id].Z, clients[id].Yaw, clients[id].Pitch))
 
@@ -295,11 +297,11 @@ func HandleMessage(conn net.Conn, buffer []byte, username string, id byte) {
 	if buffer[0] == byte(0x05) {
 		// TODO: reimplement the anti-cheat code for this
 
-		x := protocol.DecodeShort(buffer, 1)
-		y := protocol.DecodeShort(buffer, 3)
-		z := protocol.DecodeShort(buffer, 5)
+		x := serialization.DecodeShort(buffer, 1)
+		y := serialization.DecodeShort(buffer, 3)
+		z := serialization.DecodeShort(buffer, 5)
 
-		if level.IsOOB(x, y, z) {
+		if serverLevel.IsOOB(x, y, z) {
 			return
 		}
 
@@ -315,7 +317,7 @@ func HandleMessage(conn net.Conn, buffer []byte, username string, id byte) {
 			return
 		}
 
-		if block_type == blocks.BLOCK_DIRT && level.GetBlock(x, y+1, z) == blocks.BLOCK_AIR {
+		if block_type == blocks.BLOCK_DIRT && serverLevel.GetBlock(x, y+1, z) == blocks.BLOCK_AIR {
 			SendToAllClients(0xff, protocol.SetBlock(x, y, z, blocks.BLOCK_GRASS))
 			return
 		}
@@ -326,9 +328,9 @@ func HandleMessage(conn net.Conn, buffer []byte, username string, id byte) {
 	}
 
 	if buffer[0] == byte(0x08) {
-		x := protocol.DecodeShort(buffer, 2)
-		y := protocol.DecodeShort(buffer, 4)
-		z := protocol.DecodeShort(buffer, 6)
+		x := serialization.DecodeShort(buffer, 2)
+		y := serialization.DecodeShort(buffer, 4)
+		z := serialization.DecodeShort(buffer, 6)
 
 		clients[id].Yaw = buffer[8]
 		clients[id].Pitch = buffer[9]
@@ -343,7 +345,7 @@ func HandleMessage(conn net.Conn, buffer []byte, username string, id byte) {
 	}
 
 	if buffer[0] == byte(0x0d) {
-		message := protocol.DecodeString(buffer, 2)
+		message := serialization.DecodeString(buffer, 2)
 
 		if len(message) == 0 {
 			return
@@ -409,7 +411,7 @@ func HandleConnection(conn net.Conn) {
 		}
 
 		if buffer[0] == byte(0x00) && buffer[1] != byte(0x00) {
-			clients[client_index].Username = protocol.DecodeString(buffer, 2)
+			clients[client_index].Username = serialization.DecodeString(buffer, 2)
 		}
 
 		HandleMessage(conn, buffer, clients[client_index].Username, client_index)
