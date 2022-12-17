@@ -1,6 +1,7 @@
 package protocol
 
 import (
+	"goserver/blocks"
 	"github.com/aquilax/go-perlin"
 	"compress/gzip"
 	"encoding/binary"
@@ -10,59 +11,6 @@ import (
 	"crypto/sha256"
 	"time"
 	"log"
-)
-
-const (
-	BLOCK_AIR = 0
-	BLOCK_STONE = 1
-	BLOCK_GRASS = 2
-	BLOCK_DIRT = 3
-	BLOCK_COBBLESTONE = 4
-	BLOCK_PLANKS = 5
-	BLOCK_SAPLING = 6
-	BLOCK_BEDROCK = 7
-	BLOCK_FLOWING_WATER = 8
-	BLOCK_STATIONARY_WATER = 9
-	BLOCK_FLOWING_LAVA = 10
-	BLOCK_STATIONARY_LAVA = 11
-	BLOCK_SAND = 12
-	BLOCK_GRAVEL = 13
-	BLOCK_GOLD_ORE = 14
-	BLOCK_IRON_ORE = 15
-	BLOCK_COAL_ORE = 16
-	BLOCK_WOOD = 17
-	BLOCK_LEAVES = 18
-	BLOCK_SPONGE = 19
-	BLOCK_GLASS = 20
-	BLOCK_RED_CLOTH = 21
-	BLOCK_ORANGE_CLOTH = 22
-	BLOCK_YELLOW_CLOTH = 23
-	BLOCK_CHARTREUSE_CLOTH = 24
-	BLOCK_GREEN_CLOTH = 25
-	BLOCK_SPRING_GREEN_CLOTH = 26
-	BLOCK_CYAN_CLOTH = 27
-	BLOCK_CAPRI_CLOTH = 28
-	BLOCK_ULTRAMARINE_CLOTH = 29
-	BLOCK_VIOLET_CLOTH = 30
-	BLOCK_PURPLE_CLOTH = 31
-	BLOCK_MAGENTA_CLOTH = 32
-	BLOCK_ROSE_CLOTH = 33
-	BLOCK_DARK_GRAY_CLOTH = 34
-	BLOCK_LIGHT_GRAY_CLOTH = 35
-	BLOCK_WHITE_CLOTH = 36
-	BLOCK_DANDELION = 37
-	BLOCK_ROSE = 38
-	BLOCK_BROWN_MUSHROOM = 39
-	BLOCK_RED_MUSHROOM = 40
-	BLOCK_GOLD = 41
-	BLOCK_IRON = 42
-	BLOCK_DOUBLE_SLAB = 43
-	BLOCK_SLAB = 44
-	BLOCK_BRICKS = 45
-	BLOCK_TNT = 46
-	BLOCK_BOOKSHELF = 47
-	BLOCK_MOSSY_COBBLESTONE = 48
-	BLOCK_OBSIDIAN = 49
 )
 
 const (
@@ -171,7 +119,7 @@ func (level Level) IsOOB(x int, y int, z int) bool {
 
 func (level Level) GetBlock(x int, y int, z int) byte {
 	if level.IsOOB(x, y, z) {
-		return BLOCK_AIR
+		return blocks.BLOCK_AIR
 	}
 
 	return level.Data[(y * level.Depth + z) * level.Width + x]
@@ -277,7 +225,7 @@ func DeserializeLevel(data []byte) Level {
 		spawnYaw := data[6 + 12] // Spawn Yaw
 		spawnPitch := data[6 + 13] // Spawn Pitch
 		
-		block_data := data[headerSize:]
+		blockData := data[headerSize:]
 		
 		level := Level{
 			width,
@@ -289,14 +237,14 @@ func DeserializeLevel(data []byte) Level {
 			make([]BlockUpdate, 0),
 		}
 		
-		blocks := int(float32(len(block_data)) / float32(blockSize))
+		blocks := int(float32(len(blockData)) / float32(blockSize))
 		
 		//log.Println("DeserializeLevel(): Deserializing and Iterating block updates...")
 		
 		for i := 0; i < blocks; i++ {
 			startIndex := blockSize * i
 			endIndex := startIndex + blockSize
-			block := DeserializeBlockUpdate(block_data[startIndex:endIndex])
+			block := DeserializeBlockUpdate(blockData[startIndex:endIndex])
 			blockHash := sha256.Sum256(block.Serialize())
 			
 			if len(level.Chain) > 0 {
@@ -387,7 +335,7 @@ func GenerateLevel(width int, height int, depth int, level_generation_type int, 
 	}
 	
 	for y := 0; y < height; y++ {
-		if level.GetBlock(level.Spawnpoint.X, y, level.Spawnpoint.Z) == BLOCK_AIR {
+		if level.GetBlock(level.Spawnpoint.X, y, level.Spawnpoint.Z) == blocks.BLOCK_AIR {
 			level.Spawnpoint.Y = y + 1
 			break
 		}
@@ -400,7 +348,7 @@ func FlatLevelGenerator(level *Level) {
 	for y := 0; y < 5; y++ {
 		for x := 0; x < level.Width; x++ {
 			for z := 0; z < level.Depth; z++ {
-				level.SetBlock(x, 0 + y, z, BLOCK_STONE)
+				level.SetBlock(x, 0 + y, z, blocks.BLOCK_STONE)
 			}
 		}
 	}
@@ -408,14 +356,14 @@ func FlatLevelGenerator(level *Level) {
 	for y := 0; y < 2; y++ {
 		for x := 0; x < level.Width; x++ {
 			for z := 0; z < level.Depth; z++ {
-				level.SetBlock(x, 5 + y, z, BLOCK_DIRT)
+				level.SetBlock(x, 5 + y, z, blocks.BLOCK_DIRT)
 			}
 		}
 	}
 	
 	for x := 0; x < level.Width; x++ {
 		for z := 0; z < level.Depth; z++ {
-			level.SetBlock(x, 7, z, BLOCK_GRASS)
+			level.SetBlock(x, 7, z, blocks.BLOCK_GRASS)
 		}
 	}
 }
@@ -436,7 +384,7 @@ func ExperimentalLevelGenerator(level *Level) {
 	for y := 0; y < 5; y++ {
 		for x := 0; x < level.Width; x++ {
 			for z := 0; z < level.Depth; z++ {
-				level.SetBlock(x, 0 + y, z, BLOCK_STONE)
+				level.SetBlock(x, 0 + y, z, blocks.BLOCK_STONE)
 			}
 		}
 	}
@@ -457,14 +405,14 @@ func ExperimentalLevelGenerator(level *Level) {
 			
 			if (noiseValue5 * noiseValue6) > 0.3 {
 				for y := 0; y < cliffHeight; y++ {
-					level.SetBlock(x, 5 + y, z, BLOCK_STONE)
+					level.SetBlock(x, 5 + y, z, blocks.BLOCK_STONE)
 				}
 			} else {
 				for y := 0; y < noiseHeight; y++ {
-					level.SetBlock(x, 5 + y, z, BLOCK_DIRT)
+					level.SetBlock(x, 5 + y, z, blocks.BLOCK_DIRT)
 				}
 				
-				level.SetBlock(x, 5 + noiseHeight, z, BLOCK_GRASS)
+				level.SetBlock(x, 5 + noiseHeight, z, blocks.BLOCK_GRASS)
 			}
 		}
 	}

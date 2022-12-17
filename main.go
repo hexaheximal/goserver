@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"goserver/blocks"
 	"goserver/config"
 	"goserver/protocol"
 	"io/ioutil"
@@ -267,9 +268,9 @@ func SendInitialData(conn net.Conn, buffer []byte, id byte) {
 
 		// Send a blank line at the end if it wasn't already sent
 
-		log.Println(len(lines[len(lines) - 1]))
+		log.Println(len(lines[len(lines)-1]))
 
-		if len(lines[len(lines) - 1]) != 0 {
+		if len(lines[len(lines)-1]) != 0 {
 			conn.Write(protocol.Message(126, ""))
 		}
 	}
@@ -305,17 +306,17 @@ func HandleMessage(conn net.Conn, buffer []byte, username string, id byte) {
 		block_type := buffer[8]
 
 		if buffer[7] != 0x01 {
-			block_type = protocol.BLOCK_AIR
+			block_type = blocks.BLOCK_AIR
 		}
 
-		if block_type > protocol.BLOCK_OBSIDIAN {
+		if block_type > blocks.BLOCK_OBSIDIAN {
 			conn.Write(protocol.Disconnect("Invalid block!"))
 			conn.Close()
 			return
 		}
 
-		if block_type == protocol.BLOCK_DIRT && level.GetBlock(x, y + 1, z) == protocol.BLOCK_AIR {
-			SendToAllClients(0xff, protocol.SetBlock(x, y, z, protocol.BLOCK_GRASS))
+		if block_type == blocks.BLOCK_DIRT && level.GetBlock(x, y+1, z) == blocks.BLOCK_AIR {
+			SendToAllClients(0xff, protocol.SetBlock(x, y, z, blocks.BLOCK_GRASS))
 			return
 		}
 
