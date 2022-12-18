@@ -7,15 +7,11 @@ TL;DR **DO NOT USE THIS BRANCH UNLESS YOU KNOW WHAT YOU'RE DOING. USE THE STABLE
 
 After a long time of not making any changes to goserver, I'm going to make a lot of major changes to it.  
 ***More specifically:***
-- ✅ Splitting the code in `protocol.go` (and some of the code in `main.go`) into separate files
-- ☑️ Rewriting the protocol & serialization system
-- ❌ Implementing admin commands
-- ❌ Implementing a plugin system
-- ❌ Implementing multiple levels & switching between them
-
-✅ = Finished  
-☑️ = Partially implemented  
-❌ = Not implemented yet  
+- [x] Splitting the code in `protocol.go` (and some of the code in `main.go`) into separate files
+- [ ] Rewriting the protocol & serialization system
+- [ ] Implementing admin commands
+- [ ] Implementing a plugin system
+- [ ] Implementing multiple levels & switching between them
 
 ...and probably also some other things that I haven't planned yet.  
 
