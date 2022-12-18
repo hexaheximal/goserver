@@ -4,12 +4,12 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"goserver/compression"
 	"goserver/config"
 	"goserver/level"
 	"goserver/packet"
 	"goserver/protocol"
 	"goserver/serialization"
-	"goserver/compression"
 	"io/ioutil"
 	"log"
 	"net"
@@ -236,7 +236,7 @@ func SendInitialData(r *packet.PacketReader, w *packet.PacketWriter, id byte) {
 
 	protocol.WriteServerIdentification(w, serverConfig.GetString("server-name"), serverConfig.GetString("motd"), false) // Server Identification
 	w.WriteToSocket(clients[id].Socket)
-	
+
 	// TODO: change this
 	clients[id].Socket.Write([]byte{protocol.SERVER_LEVEL_INITIALIZE}) // Level Initialize
 
