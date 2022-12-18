@@ -11,6 +11,7 @@ import (
 	"goserver/packet"
 	"goserver/protocol"
 	"goserver/serialization"
+	"goserver/compression"
 	"io/ioutil"
 	"log"
 	"net"
@@ -113,7 +114,7 @@ func main() {
 				panic(err)
 			}
 
-			serverLevel = level.DeserializeLevel(protocol.DecompressData(content))
+			serverLevel = level.DeserializeLevel(compression.DecompressData(content))
 
 			if serverLevel.Type == level.LEVEL_TYPE_NORMAL {
 				log.Fatalln("Level history is only available in chain levels.")
@@ -194,7 +195,7 @@ func main() {
 			panic(err)
 		}
 
-		serverLevel = level.DeserializeLevel(protocol.DecompressData(content))
+		serverLevel = level.DeserializeLevel(compression.DecompressData(content))
 	}
 
 	listen, err := net.Listen("tcp", "127.0.0.1:"+serverConfig.GetString("port"))
@@ -239,7 +240,7 @@ func main() {
 func SaveLevel() {
 	log.Println("Saving level...")
 
-	err := ioutil.WriteFile(MAIN_LEVEL_FILE, protocol.CompressData(serverLevel.Serialize()), 0644)
+	err := ioutil.WriteFile(MAIN_LEVEL_FILE, compression.CompressData(serverLevel.Serialize()), 0644)
 
 	if err != nil {
 		log.Println("Failed to save level:", err)
@@ -282,7 +283,7 @@ func SendInitialData(conn net.Conn, buffer []byte, id byte) {
 
 	conn.Write([]byte{protocol.SERVER_LEVEL_INITIALIZE}) // Level Initialize
 
-	splitCompressedEncodedLevel := serialization.SplitData(protocol.CompressData(serverLevel.Encode()), 1024)
+	splitCompressedEncodedLevel := serialization.SplitData(compression.CompressData(serverLevel.Encode()), 1024)
 
 	for i := 0; i < len(splitCompressedEncodedLevel); i++ {
 		percentage := int((float32(i+1) / float32(len(splitCompressedEncodedLevel))) * 100)
