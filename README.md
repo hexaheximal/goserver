@@ -7,7 +7,7 @@ A Minecraft Classic server, written in [Go](https://go.dev/).
 
 Major changes are going to be made:
 - [x] Splitting the code in `protocol.go` (and some of the code in `main.go`) into separate files
-- [ ] Rewriting the protocol & serialization system
+- [x] Rewriting the protocol & serialization system
 - [ ] Implementing admin commands
 - [ ] Implementing a plugin system
 - [ ] Implementing multiple levels & switching between them
