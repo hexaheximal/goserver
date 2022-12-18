@@ -2,11 +2,23 @@ package protocol
 
 import (
 	"goserver/level"
-	"goserver/serialization"
+	"goserver/packet"
 )
 
 const (
+	// Misc.
+
 	PROTOCOL_VERSION = 0x07
+	
+	// Client -> Server
+
+	CLIENT_IDENTIFICATION = 0x00
+	CLIENT_SET_BLOCK = 0x05
+	CLIENT_POSITION_AND_ORIENTATION = 0x08
+	CLIENT_MESSAGE = 0x0d
+	
+	// Server -> Client
+
 	SERVER_IDENTIFICATION = 0x00
 	SERVER_PING = 0x01 // Unused
 	SERVER_LEVEL_INITIALIZE = 0x02
@@ -26,130 +38,84 @@ const (
 
 // Packets
 
-func ServerIdentification(serverName string, serverMOTD string, isOP bool) []byte {
-	buffer := make([]byte, 1 + 1 + serialization.STRING_LENGTH + serialization.STRING_LENGTH + 1)
+func WriteServerIdentification(w *packet.PacketWriter, name string, motd string, op bool) {
+	w.WriteByte(SERVER_IDENTIFICATION) // Packet ID
+	w.WriteByte(PROTOCOL_VERSION) // Protocol version
+	w.WriteString(name) // Server name
+	w.WriteString(motd) // Server MOTD
 	
-	buffer[0] = SERVER_IDENTIFICATION // Packet ID
-	buffer[1] = PROTOCOL_VERSION // Protocol version
-	
-	serialization.CopyData(2, serialization.EncodeString(serverName), buffer) // Server name
-	serialization.CopyData(2 + serialization.STRING_LENGTH, serialization.EncodeString(serverMOTD), buffer) // Server MOTD
-	
-	if isOP {
-		buffer[2 + serialization.STRING_LENGTH + serialization.STRING_LENGTH] = 0x64 // OP User type
+	if op {
+		w.WriteByte(0x64) // OP User type
 	} else {
-		buffer[2 + serialization.STRING_LENGTH + serialization.STRING_LENGTH] = 0x00 // non-OP User type
+		w.WriteByte(0x00) // non-OP User type
 	}
-	
-	return buffer
 }
 
-func LevelDataChunk(data []byte, percentComplete int) []byte {
-	buffer := make([]byte, 1 + 2 + serialization.BYTE_ARRAY_LENGTH + 1)
-	
-	buffer[0] = SERVER_LEVEL_DATA_CHUNK // Packet ID
-	
-	serialization.CopyData(1, serialization.EncodeShort(len(data)), buffer) // Chunk Length
-	serialization.CopyData(3, serialization.EncodeByteArray(data), buffer) // Chunk Data
-	
-	buffer[3 + 1024] = byte(percentComplete) // Percent Complete
-	
-	return buffer
+func WriteLevelDataChunk(w *packet.PacketWriter, data []byte, percentage byte) {
+	w.WriteByte(SERVER_LEVEL_DATA_CHUNK) // Packet ID
+	w.WriteShort(len(data)) // Chunk Length
+	w.WriteByteArray(data) // Chunk Data
+	w.WriteByte(percentage) // Progress Percentage
 }
 
-func LevelFinalize(level level.Level) []byte {
-	buffer := make([]byte, 1 + 2 + 2 + 2)
-	
-	buffer[0] = SERVER_LEVEL_FINALIZE // Packet ID
-	
-	serialization.CopyData(1, serialization.EncodeShort(level.Width), buffer) // X size
-	serialization.CopyData(3, serialization.EncodeShort(level.Height), buffer) // Y size
-	serialization.CopyData(5, serialization.EncodeShort(level.Depth), buffer) // Z size
-	
-	return buffer
+func WriteLevelFinalize(w *packet.PacketWriter, level level.Level) {
+	w.WriteByte(SERVER_LEVEL_FINALIZE) // Packet ID
+	w.WriteShort(level.Width) // Width
+	w.WriteShort(level.Height) // Height
+	w.WriteShort(level.Depth) // Depth
 }
 
-func SpawnPlayer(name string, id byte, x int, y int, z int, yaw byte, pitch byte) []byte {
-	buffer := make([]byte, 1 + 1 + serialization.STRING_LENGTH + 2 + 2 + 2 + 1 + 1)
-	
-	buffer[0] = SERVER_SPAWN_PLAYER // Packet ID
-	buffer[1] = id // Player ID
-	serialization.CopyData(2, serialization.EncodeString(name), buffer) // Player Name
-	serialization.CopyData(2 + serialization.STRING_LENGTH, serialization.EncodeShort(x), buffer) // X
-	serialization.CopyData(2 + serialization.STRING_LENGTH + 2, serialization.EncodeShort(y), buffer) // Y
-	serialization.CopyData(2 + serialization.STRING_LENGTH + 2 + 2, serialization.EncodeShort(z), buffer) // Z
-	buffer[2 + serialization.STRING_LENGTH + 2 + 2 + 2] = yaw // Yaw (Heading)
-	buffer[2 + serialization.STRING_LENGTH + 2 + 2 + 2 + 1] = pitch // Pitch
-	
-	return buffer
+func WriteSpawnPlayer(w *packet.PacketWriter, name string, id byte, x int, y int, z int, yaw byte, pitch byte) {
+	w.WriteByte(SERVER_SPAWN_PLAYER) // Packet ID
+	w.WriteByte(id) // Player ID
+	w.WriteString(name) // Player Name
+	w.WriteShort(x) // X
+	w.WriteShort(y) // Y
+	w.WriteShort(z) // Z
+	w.WriteByte(yaw) // Yaw (Heading)
+	w.WriteByte(pitch) // Pitch
 }
 
-func DespawnPlayer(id byte) []byte {
-	buffer := make([]byte, 1 + 1)
-	
-	buffer[0] = SERVER_DESPAWN_PLAYER // Packet ID
-	buffer[1] = id // Player ID
-	
-	return buffer
+func WriteDespawnPlayer(w *packet.PacketWriter, id byte) {
+	w.WriteByte(SERVER_DESPAWN_PLAYER)
+	w.WriteByte(id)
 }
 
-func Disconnect(reason string) []byte {
-	buffer := make([]byte, 1 + serialization.STRING_LENGTH)
-	
-	buffer[0] = SERVER_DISCONNECT // Packet ID
-	serialization.CopyData(1, serialization.EncodeString(reason), buffer) // Disconnect reason
-	
-	return buffer
+func WriteDisconnect(w *packet.PacketWriter, message string) {
+	w.WriteByte(SERVER_DISCONNECT) // Packet ID
+	w.WriteString(message) // Disconnect message
 }
 
-func Message(id byte, message string) []byte {
-	buffer := make([]byte, 1 + 1 + serialization.STRING_LENGTH)
-	
-	buffer[0] = SERVER_MESSAGE // Packet ID
-	buffer[1] = id // Player ID
-	serialization.CopyData(2, serialization.EncodeString(message), buffer) // Message
-	
-	return buffer
+func WriteMessage(w *packet.PacketWriter, id byte, message string) {
+	w.WriteByte(SERVER_MESSAGE) // Packet ID
+	w.WriteByte(id) // Player ID
+	w.WriteString(message) // Message
 }
 
-func SetBlock(x int, y int, z int, id byte) []byte {
-	buffer := make([]byte, 1 + 2 + 2 + 2 + 1)
-	
-	buffer[0] = SERVER_SET_BLOCK // Packet ID
-	serialization.CopyData(1, serialization.EncodeShort(x), buffer) // X
-	serialization.CopyData(3, serialization.EncodeShort(y), buffer) // Y
-	serialization.CopyData(5, serialization.EncodeShort(z), buffer) // Z
-	buffer[7] = id // Block Type
-	
-	return buffer
+func WriteSetBlock(w *packet.PacketWriter, x int, y int, z int, id byte) {
+	w.WriteByte(SERVER_SET_BLOCK) // Packet ID
+	w.WriteShort(x) // X
+	w.WriteShort(y) // Y
+	w.WriteShort(z) // Z
+	w.WriteByte(id) // Block Type
 }
 
-func PositionAndOrientation(id int, x int, y int, z int, yaw int, pitch int) []byte {
-	buffer := make([]byte, 1 + 1 + 2 + 2 + 2 + 1 + 1)
-	
-	buffer[0] = SERVER_POSITION_AND_ORIENTATION // Packet ID
-	buffer[1] = byte(id) // Player ID
-	serialization.CopyData(2, serialization.EncodeShort(x), buffer) // X
-	serialization.CopyData(4, serialization.EncodeShort(y), buffer) // Y
-	serialization.CopyData(6, serialization.EncodeShort(z), buffer) // Z
-	buffer[8] = byte(yaw) // Yaw
-	buffer[9] = byte(pitch) // Pitch
-	
-	return buffer
+func WritePositionAndOrientation(w *packet.PacketWriter, id byte, x int, y int, z int, yaw byte, pitch byte) {
+	w.WriteByte(SERVER_POSITION_AND_ORIENTATION) // Packet ID
+	w.WriteByte(id) // Player ID
+	w.WriteShort(x) // X
+	w.WriteShort(y) // Y
+	w.WriteShort(z) // Z
+	w.WriteByte(yaw) // Yaw
+	w.WriteByte(pitch) // Pitch
 }
 
-func PositionAndOrientationUpdate(id byte, oldX int, oldY int, oldZ int, newX int, newY int, newZ int, yaw byte, pitch byte) []byte {
-	buffer := make([]byte, 1 + 1 + 1 + 1 + 1 + 1 + 1)
-	
-	buffer[0] = SERVER_POSITION_AND_ORIENTATION_UPDATE // Packet ID
-	buffer[1] = id // Player ID
-	
-	buffer[2] = byte(newX - oldX)// Change in X
-	buffer[3] = byte(newY - oldY) // Change in Y
-	buffer[4] = byte(newZ - oldZ) // Change in Z
-	
-	buffer[5] = yaw // Yaw
-	buffer[6] = pitch // Pitch
-	
-	return buffer
+func WritePositionAndOrientationUpdate(w *packet.PacketWriter, id byte, oldX int, oldY int, oldZ int, newX int, newY int, newZ int, yaw byte, pitch byte) {
+	w.WriteByte(SERVER_POSITION_AND_ORIENTATION_UPDATE) // Packet ID
+	w.WriteByte(id) // Player ID
+	w.WriteByte(byte(newX - oldX)) // X difference
+	w.WriteByte(byte(newY - oldY)) // Y difference
+	w.WriteByte(byte(newZ - oldZ)) // Z difference
+	w.WriteByte(yaw) // Yaw
+	w.WriteByte(pitch) // Pitch
 }

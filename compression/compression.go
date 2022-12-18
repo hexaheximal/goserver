@@ -6,6 +6,8 @@ import (
 	"bytes"
 )
 
+// TODO: Compression levels?
+
 func CompressData(source []byte) []byte {
 	var buf bytes.Buffer
 	

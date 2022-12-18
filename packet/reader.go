@@ -43,6 +43,10 @@ func (r *PacketReader) ReadByte() byte {
 	return r.ReadBytes(1)[0]
 }
 
+func (r *PacketReader) Reset() {
+	r.Index = 0
+}
+
 func CreatePacketReader(buffer []byte) PacketReader {
 	return PacketReader{buffer, 0}
 }

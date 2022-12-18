@@ -1,11 +1,9 @@
 package main
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"errors"
 	"fmt"
-	"goserver/blocks"
 	"goserver/config"
 	"goserver/level"
 	"goserver/packet"
@@ -49,59 +47,6 @@ const (
 func main() {
 	if runtime.GOOS == "windows" {
 		log.Fatalln("Windows is not supported.")
-	}
-
-	// THIS IS TEMPORARY
-
-	if len(os.Args) > 1 && os.Args[1] == "packetexample" {
-		w := packet.CreatePacketWriter()
-
-		// Writer example: S2C Server Identification
-		w.WriteByte(0x00)
-		w.WriteByte(0x07)
-		w.WriteString("Minecraft Server")
-		w.WriteString("Welcome to my Minecraft Server!")
-		w.WriteByte(0x00)
-
-		if bytes.Compare(w.Buffer, protocol.ServerIdentification("Minecraft Server", "Welcome to my Minecraft Server!", false)) == 0 {
-			log.Println("Test 1 passed!")
-		} else {
-			log.Println("Test 1 failed!")
-		}
-
-		// Reader example: S2C Server Identification
-
-		r := packet.CreatePacketReader(w.Buffer)
-
-		testFailed := false
-
-		if r.ReadByte() != 0x00 {
-			testFailed = true
-		}
-
-		if r.ReadByte() != 0x07 {
-			testFailed = true
-		}
-
-		if r.ReadString() != "Minecraft Server" {
-			testFailed = true
-		}
-
-		if r.ReadString() != "Welcome to my Minecraft Server!" {
-			testFailed = true
-		}
-
-		if r.ReadByte() != 0x00 {
-			testFailed = true
-		}
-
-		if testFailed {
-			log.Println("Test 2 failed!")
-		} else {
-			log.Println("Test 2 passed!")
-		}
-
-		return
 	}
 
 	if len(os.Args) > 1 && os.Args[1] == "levelhistory" {
@@ -256,7 +201,10 @@ func LevelSaveThread() {
 	}
 }
 
-func SendToAllClients(exclude byte, data []byte) {
+func SendToAllClients(exclude byte, w *packet.PacketWriter) {
+	data := w.Buffer
+	w.Buffer = make([]byte, 0)
+
 	for i := 0; i < len(clients); i++ {
 		if clients[i] == NULL_CLIENT {
 			continue
@@ -270,27 +218,38 @@ func SendToAllClients(exclude byte, data []byte) {
 	}
 }
 
-func SendInitialData(conn net.Conn, buffer []byte, id byte) {
-	if buffer[1] != byte(0x07) {
-		conn.Write(protocol.Disconnect("Incorrect protocol version!"))
-		conn.Close()
+func SendInitialData(r *packet.PacketReader, w *packet.PacketWriter, id byte) {
+	r.Reset()
+	r.ReadByte()
+
+	if r.ReadByte() != byte(0x07) {
+		protocol.WriteDisconnect(w, "Incorrect protocol version!")
+		w.WriteToSocket(clients[id].Socket)
+		clients[id].Socket.Close()
 		return
 	}
 
-	username := serialization.DecodeString(buffer, 2)
+	username := r.ReadString()
 
-	conn.Write(protocol.ServerIdentification(serverConfig.GetString("server-name"), serverConfig.GetString("motd"), false)) // Server Identification
+	// TODO: player auth
+	//token := r.ReadString()
 
-	conn.Write([]byte{protocol.SERVER_LEVEL_INITIALIZE}) // Level Initialize
+	protocol.WriteServerIdentification(w, serverConfig.GetString("server-name"), serverConfig.GetString("motd"), false) // Server Identification
+	w.WriteToSocket(clients[id].Socket)
+	
+	// TODO: change this
+	clients[id].Socket.Write([]byte{protocol.SERVER_LEVEL_INITIALIZE}) // Level Initialize
 
 	splitCompressedEncodedLevel := serialization.SplitData(compression.CompressData(serverLevel.Encode()), 1024)
 
 	for i := 0; i < len(splitCompressedEncodedLevel); i++ {
-		percentage := int((float32(i+1) / float32(len(splitCompressedEncodedLevel))) * 100)
-		conn.Write(protocol.LevelDataChunk(splitCompressedEncodedLevel[i], percentage)) // Level Data Chunk
+		percentage := byte((float32(i+1) / float32(len(splitCompressedEncodedLevel))) * 100)
+		protocol.WriteLevelDataChunk(w, splitCompressedEncodedLevel[i], percentage) // Level Data Chunk
+		w.WriteToSocket(clients[id].Socket)
 	}
 
-	conn.Write(protocol.LevelFinalize(serverLevel)) // Level Finalize
+	protocol.WriteLevelFinalize(w, serverLevel) // Level Finalize
+	w.WriteToSocket(clients[id].Socket)
 
 	clients[id].X = int(float32(serverLevel.Spawnpoint.X) * 32.0)
 	clients[id].Y = int(float32(serverLevel.Spawnpoint.Y) * 32.0)
@@ -300,9 +259,11 @@ func SendInitialData(conn net.Conn, buffer []byte, id byte) {
 
 	// Spawn Player
 
-	conn.Write(protocol.SpawnPlayer(username, 0xff, (serverLevel.Spawnpoint.X<<5)+16, (serverLevel.Spawnpoint.Y<<5)+16, (serverLevel.Spawnpoint.Z<<5)+16, clients[id].Yaw, clients[id].Pitch))
+	protocol.WriteSpawnPlayer(w, clients[id].Username, 0xff, (serverLevel.Spawnpoint.X<<5)+16, (serverLevel.Spawnpoint.Y<<5)+16, (serverLevel.Spawnpoint.Z<<5)+16, clients[id].Yaw, clients[id].Pitch)
+	w.WriteToSocket(clients[id].Socket)
 
-	SendToAllClients(id, protocol.SpawnPlayer(username, id, clients[id].X, clients[id].Y, clients[id].Z, clients[id].Yaw, clients[id].Pitch))
+	protocol.WriteSpawnPlayer(w, clients[id].Username, clients[id].ID, clients[id].X, clients[id].Y, clients[id].Z, clients[id].Yaw, clients[id].Pitch)
+	SendToAllClients(clients[id].ID, w)
 
 	if _, err := os.Stat("welcome.txt"); errors.Is(err, os.ErrNotExist) {
 		log.Println("Cannot find welcome.txt, not showing welcome message.")
@@ -321,7 +282,8 @@ func SendInitialData(conn net.Conn, buffer []byte, id byte) {
 		// Send the welcome message to the client
 
 		for _, line := range lines {
-			conn.Write(protocol.Message(126, line))
+			protocol.WriteMessage(w, 126, line)
+			w.WriteToSocket(clients[id].Socket)
 		}
 
 		// Send a blank line at the end if it wasn't already sent
@@ -329,28 +291,32 @@ func SendInitialData(conn net.Conn, buffer []byte, id byte) {
 		log.Println(len(lines[len(lines)-1]))
 
 		if len(lines[len(lines)-1]) != 0 {
-			conn.Write(protocol.Message(126, ""))
+			protocol.WriteMessage(w, 126, "")
+			w.WriteToSocket(clients[id].Socket)
 		}
 	}
 
-	SendToAllClients(0xff, protocol.Message(0xff, username+" joined the game")) // Send join message
+	protocol.WriteMessage(w, 0xff, username+" joined the game")
+	SendToAllClients(0xff, w) // Send join message
 
 	for i := 0; i < len(clients); i++ {
-		if i == int(id) || clients[i] == NULL_CLIENT {
+		if i == int(clients[id].ID) || clients[i] == NULL_CLIENT {
 			continue
 		}
 
-		conn.Write(protocol.SpawnPlayer(clients[i].Username, byte(i), clients[i].X, clients[i].Y, clients[i].Z, clients[i].Yaw, clients[i].Pitch))
+		protocol.WriteSpawnPlayer(w, clients[i].Username, byte(i), clients[i].X, clients[i].Y, clients[i].Z, clients[i].Yaw, clients[i].Pitch)
+		w.WriteToSocket(clients[id].Socket)
 	}
 }
 
-func HandleMessage(conn net.Conn, buffer []byte, username string, id byte) {
-	if buffer[0] == byte(0x00) && buffer[1] != byte(0x00) {
-		SendInitialData(conn, buffer, id)
+func HandleMessage(r *packet.PacketReader, w *packet.PacketWriter, id byte) {
+	if r.ReadByte() == byte(0x00) && r.ReadByte() != byte(0x00) {
+		r.Reset()
+		SendInitialData(r, w, id)
 		return
 	}
 
-	if buffer[0] == byte(0x05) {
+	/*if buffer[0] == byte(0x05) {
 		// TODO: reimplement the anti-cheat code for this
 
 		x := serialization.DecodeShort(buffer, 1)
@@ -416,7 +382,7 @@ func HandleMessage(conn net.Conn, buffer []byte, username string, id byte) {
 		log.Println(username + ": " + message)
 		SendToAllClients(0xff, protocol.Message(id, username+": "+message))
 		return
-	}
+	}*/
 }
 
 func HandleConnection(conn net.Conn) {
@@ -431,8 +397,11 @@ func HandleConnection(conn net.Conn) {
 		}
 	}
 
+	w := packet.CreatePacketWriter()
+
 	if slot_assigned == false {
-		conn.Write(protocol.Disconnect("The server is full!"))
+		protocol.WriteDisconnect(&w, "The server is full!")
+		w.WriteToSocket(conn)
 		log.Println("Closed Connection:", conn.RemoteAddr())
 		return
 	}
@@ -443,11 +412,16 @@ func HandleConnection(conn net.Conn) {
 		buffer := make([]byte, 512)
 		_, err := conn.Read(buffer)
 
+		r := packet.CreatePacketReader(buffer)
+
 		if err != nil {
 			conn.Close()
 
-			SendToAllClients(0xff, protocol.DespawnPlayer(client_index))
-			SendToAllClients(0xff, protocol.Message(0xff, clients[client_index].Username+" left the game"))
+			protocol.WriteDespawnPlayer(&w, client_index)
+			SendToAllClients(0xff, &w)
+
+			protocol.WriteMessage(&w, 0xff, clients[client_index].Username+" left the game")
+			SendToAllClients(0xff, &w)
 
 			clients[client_index] = NULL_CLIENT
 
@@ -457,7 +431,7 @@ func HandleConnection(conn net.Conn) {
 
 		// respond
 
-		if buffer[0] == byte(0x08) {
+		/*if buffer[0] == byte(0x08) {
 			packet_length := 1 + 1 + 2 + 2 + 2 + 1 + 1
 			HandleMessage(conn, buffer, clients[client_index].Username, client_index)
 
@@ -470,9 +444,9 @@ func HandleConnection(conn net.Conn) {
 
 		if buffer[0] == byte(0x00) && buffer[1] != byte(0x00) {
 			clients[client_index].Username = serialization.DecodeString(buffer, 2)
-		}
+		}*/
 
-		HandleMessage(conn, buffer, clients[client_index].Username, client_index)
+		HandleMessage(&r, &w, client_index)
 
 		//conn.Close()
 		//log.Println("Closed Connection:", conn.RemoteAddr())

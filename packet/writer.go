@@ -29,8 +29,9 @@ func (w *PacketWriter) WriteByteArray(data []byte) {
 	w.WriteBytes(serialization.EncodeByteArray(data))
 }
 
-func (w PacketWriter) WriteToSocket(conn net.Conn) {
+func (w *PacketWriter) WriteToSocket(conn net.Conn) {
 	conn.Write(w.Buffer)
+	w.Buffer = make([]byte, 0)
 }
 
 func CreatePacketWriter() PacketWriter {
