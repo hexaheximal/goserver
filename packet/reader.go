@@ -47,6 +47,26 @@ func (r *PacketReader) Reset() {
 	r.Index = 0
 }
 
+func (r *PacketReader) Set(index int) {
+	r.Index = index
+}
+
+func (r *PacketReader) Back(offset int) {
+	r.Index -= offset
+
+	if 0 > r.Index {
+		r.Index = 0
+	}
+}
+
+func (r *PacketReader) Forward(offset int) {
+	r.Index += offset
+}
+
+func (r *PacketReader) EOF() bool {
+	return r.Index >= len(r.Buffer) - 1
+}
+
 func CreatePacketReader(buffer []byte) PacketReader {
 	return PacketReader{buffer, 0}
 }

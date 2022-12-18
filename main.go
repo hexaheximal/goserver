@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"goserver/blocks"
 	"goserver/compression"
 	"goserver/config"
 	"goserver/level"
@@ -230,9 +231,12 @@ func SendInitialData(r *packet.PacketReader, w *packet.PacketWriter, id byte) {
 	}
 
 	username := r.ReadString()
+	clients[id].Username = username
 
 	// TODO: player auth
-	//token := r.ReadString()
+
+	r.ReadString() // token
+	r.ReadByte()
 
 	protocol.WriteServerIdentification(w, serverConfig.GetString("server-name"), serverConfig.GetString("motd"), false) // Server Identification
 	w.WriteToSocket(clients[id].Socket)
@@ -310,56 +314,65 @@ func SendInitialData(r *packet.PacketReader, w *packet.PacketWriter, id byte) {
 }
 
 func HandleMessage(r *packet.PacketReader, w *packet.PacketWriter, id byte) {
-	if r.ReadByte() == byte(0x00) && r.ReadByte() != byte(0x00) {
+	packetID := r.ReadByte()
+	secondByte := r.ReadByte()
+
+	if packetID == 0x00 && secondByte != 0x00 {
 		r.Reset()
 		SendInitialData(r, w, id)
 		return
 	}
 
-	/*if buffer[0] == byte(0x05) {
+	r.Back(1)
+
+	if packetID == byte(0x05) {
 		// TODO: reimplement the anti-cheat code for this
 
-		x := serialization.DecodeShort(buffer, 1)
-		y := serialization.DecodeShort(buffer, 3)
-		z := serialization.DecodeShort(buffer, 5)
+		x := r.ReadShort()
+		y := r.ReadShort()
+		z := r.ReadShort()
+		update_type := r.ReadByte()
+		block_type := r.ReadByte()
 
 		if serverLevel.IsOOB(x, y, z) {
 			return
 		}
 
-		block_type := buffer[8]
-
-		if buffer[7] != 0x01 {
+		if update_type != 0x01 {
 			block_type = blocks.BLOCK_AIR
 		}
 
 		if block_type > blocks.BLOCK_OBSIDIAN {
-			conn.Write(protocol.Disconnect("Invalid block!"))
-			conn.Close()
+			protocol.WriteDisconnect(w, "Invalid block!")
+			w.WriteToSocket(clients[id].Socket)
+			clients[id].Socket.Close()
 			return
 		}
 
 		if block_type == blocks.BLOCK_DIRT && serverLevel.GetBlock(x, y+1, z) == blocks.BLOCK_AIR {
-			serverLevel.SetBlockPlayer(x, y, z, blocks.BLOCK_GRASS, username)
-			SendToAllClients(0xff, protocol.SetBlock(x, y, z, blocks.BLOCK_GRASS))
+			serverLevel.SetBlockPlayer(x, y, z, blocks.BLOCK_GRASS, clients[id].Username)
+			protocol.WriteSetBlock(w, x, y, z, blocks.BLOCK_GRASS)
+			SendToAllClients(0xff, w)
 			return
 		}
 
-		serverLevel.SetBlockPlayer(x, y, z, block_type, username)
-		SendToAllClients(0xff, protocol.SetBlock(x, y, z, block_type))
+		serverLevel.SetBlockPlayer(x, y, z, block_type, clients[id].Username)
+		protocol.WriteSetBlock(w, x, y, z, block_type)
+		SendToAllClients(0xff, w)
 
 		return
 	}
 
-	if buffer[0] == byte(0x08) {
-		x := serialization.DecodeShort(buffer, 2)
-		y := serialization.DecodeShort(buffer, 4)
-		z := serialization.DecodeShort(buffer, 6)
+	if packetID == byte(0x08) {
+		x := r.ReadShort()
+		y := r.ReadShort()
+		z := r.ReadShort()
 
-		clients[id].Yaw = buffer[8]
-		clients[id].Pitch = buffer[9]
+		clients[id].Yaw = r.ReadByte()
+		clients[id].Pitch = r.ReadByte()
 
-		SendToAllClients(id, protocol.PositionAndOrientationUpdate(id, clients[id].X, clients[id].Y, clients[id].Z, x, y, z, clients[id].Yaw, clients[id].Pitch))
+		protocol.WritePositionAndOrientationUpdate(w, id, clients[id].X, clients[id].Y, clients[id].Z, x, y, z, clients[id].Yaw, clients[id].Pitch)
+		SendToAllClients(id, w)
 
 		clients[id].X = x
 		clients[id].Y = y
@@ -368,8 +381,9 @@ func HandleMessage(r *packet.PacketReader, w *packet.PacketWriter, id byte) {
 		return
 	}
 
-	if buffer[0] == byte(0x0d) {
-		message := serialization.DecodeString(buffer, 2)
+	if packetID == byte(0x0d) {
+		r.ReadByte()
+		message := r.ReadString()
 
 		if len(message) == 0 {
 			return
@@ -379,10 +393,11 @@ func HandleMessage(r *packet.PacketReader, w *packet.PacketWriter, id byte) {
 			return
 		}
 
-		log.Println(username + ": " + message)
-		SendToAllClients(0xff, protocol.Message(id, username+": "+message))
+		log.Println(clients[id].Username + ": " + clients[id].Username)
+		protocol.WriteMessage(w, id, clients[id].Username+": "+clients[id].Username)
+		SendToAllClients(0xff, w)
 		return
-	}*/
+	}
 }
 
 func HandleConnection(conn net.Conn) {
@@ -409,7 +424,7 @@ func HandleConnection(conn net.Conn) {
 	clients[client_index] = Client{"", client_index, 0, 0, 0, 0, 0, conn}
 
 	for {
-		buffer := make([]byte, 512)
+		buffer := make([]byte, 76)
 		_, err := conn.Read(buffer)
 
 		r := packet.CreatePacketReader(buffer)
@@ -431,26 +446,16 @@ func HandleConnection(conn net.Conn) {
 
 		// respond
 
-		/*if buffer[0] == byte(0x08) {
-			packet_length := 1 + 1 + 2 + 2 + 2 + 1 + 1
-			HandleMessage(conn, buffer, clients[client_index].Username, client_index)
-
-			if buffer[packet_length] != byte(0x00) {
-				HandleMessage(conn, buffer[packet_length:], clients[client_index].Username, client_index)
-			}
-
-			continue
-		}
-
-		if buffer[0] == byte(0x00) && buffer[1] != byte(0x00) {
-			clients[client_index].Username = serialization.DecodeString(buffer, 2)
-		}*/
+		packetID := r.ReadByte()
+		r.Reset()
 
 		HandleMessage(&r, &w, client_index)
 
-		//conn.Close()
-		//log.Println("Closed Connection:", conn.RemoteAddr())
-		//return
+		if packetID == protocol.CLIENT_POSITION_AND_ORIENTATION {
+			r.Buffer = r.Buffer[10:]
+			r.Reset()
+			HandleMessage(&r, &w, client_index)
+		}
 	}
 
 	conn.Close()
