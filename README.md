@@ -8,9 +8,9 @@ A Minecraft Classic server, written in [Go](https://go.dev/).
 Major changes are going to be made:
 - [x] Splitting the code in `protocol.go` (and some of the code in `main.go`) into separate files
 - [x] Rewriting the protocol & serialization system
-- [ ] Implementing admin commands
-- [ ] Implementing a plugin system
+- [ ] Implementing chat commands
 - [ ] Implementing multiple levels & switching between them
+- [ ] Implementing a plugin system
 
 # Feature Comparison
 
