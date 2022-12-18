@@ -49,21 +49,13 @@ func DecodeShort(data []byte, index int) int {
 }
 
 func EncodeByteArray(data []byte) []byte {
-	bytes := make([]byte, BYTE_ARRAY_LENGTH)
-	
-	i := 0
-	
-	for i = 0; i < BYTE_ARRAY_LENGTH; i++ {
-		// Unused bytes use 0x00
-		
-		bytes[i] = byte(0x00)
+	if len(data) == BYTE_ARRAY_LENGTH {
+		return data
 	}
 	
-	for i = 0; i < len(data); i++ {
-		bytes[i] = data[i]
-	}
-	
-	return bytes
+	buffer := make([]byte, BYTE_ARRAY_LENGTH)
+	copy(buffer, data)
+	return buffer
 }
 
 func EncodeShort(value int) []byte {

@@ -1,14 +1,16 @@
 package main
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"errors"
 	"fmt"
 	"goserver/blocks"
 	"goserver/config"
+	"goserver/level"
+	"goserver/packet"
 	"goserver/protocol"
 	"goserver/serialization"
-	"goserver/level"
 	"io/ioutil"
 	"log"
 	"net"
@@ -46,6 +48,59 @@ const (
 func main() {
 	if runtime.GOOS == "windows" {
 		log.Fatalln("Windows is not supported.")
+	}
+
+	// THIS IS TEMPORARY
+
+	if len(os.Args) > 1 && os.Args[1] == "packetexample" {
+		w := packet.CreatePacketWriter()
+
+		// Writer example: S2C Server Identification
+		w.WriteByte(0x00)
+		w.WriteByte(0x07)
+		w.WriteString("Minecraft Server")
+		w.WriteString("Welcome to my Minecraft Server!")
+		w.WriteByte(0x00)
+
+		if bytes.Compare(w.Buffer, protocol.ServerIdentification("Minecraft Server", "Welcome to my Minecraft Server!", false)) == 0 {
+			log.Println("Test 1 passed!")
+		} else {
+			log.Println("Test 1 failed!")
+		}
+
+		// Reader example: S2C Server Identification
+
+		r := packet.CreatePacketReader(w.Buffer)
+
+		testFailed := false
+
+		if r.ReadByte() != 0x00 {
+			testFailed = true
+		}
+
+		if r.ReadByte() != 0x07 {
+			testFailed = true
+		}
+
+		if r.ReadString() != "Minecraft Server" {
+			testFailed = true
+		}
+
+		if r.ReadString() != "Welcome to my Minecraft Server!" {
+			testFailed = true
+		}
+
+		if r.ReadByte() != 0x00 {
+			testFailed = true
+		}
+
+		if testFailed {
+			log.Println("Test 2 failed!")
+		} else {
+			log.Println("Test 2 passed!")
+		}
+
+		return
 	}
 
 	if len(os.Args) > 1 && os.Args[1] == "levelhistory" {
@@ -318,10 +373,12 @@ func HandleMessage(conn net.Conn, buffer []byte, username string, id byte) {
 		}
 
 		if block_type == blocks.BLOCK_DIRT && serverLevel.GetBlock(x, y+1, z) == blocks.BLOCK_AIR {
+			serverLevel.SetBlockPlayer(x, y, z, blocks.BLOCK_GRASS, username)
 			SendToAllClients(0xff, protocol.SetBlock(x, y, z, blocks.BLOCK_GRASS))
 			return
 		}
 
+		serverLevel.SetBlockPlayer(x, y, z, block_type, username)
 		SendToAllClients(0xff, protocol.SetBlock(x, y, z, block_type))
 
 		return
