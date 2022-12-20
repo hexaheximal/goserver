@@ -224,7 +224,7 @@ func SendInitialData(r *packet.PacketReader, w *packet.PacketWriter, id byte) {
 	r.ReadByte()
 
 	if r.ReadByte() != byte(0x07) {
-		protocol.WriteDisconnect(w, "Incorrect protocol version!")
+		protocol.WriteDisconnect(w, protocol.DISCONNECT_PROTOCOL_VERSION)
 		w.WriteToSocket(clients[id].Socket)
 		clients[id].Socket.Close()
 		return
@@ -342,8 +342,10 @@ func HandleMessage(r *packet.PacketReader, w *packet.PacketWriter, id byte) {
 			block_type = blocks.BLOCK_AIR
 		}
 
+		// TODO: Allowed blocks list
+
 		if block_type > blocks.BLOCK_OBSIDIAN {
-			protocol.WriteDisconnect(w, "Invalid block!")
+			protocol.WriteDisconnect(w, protocol.DISCONNECT_CHEAT_TILE_TYPE)
 			w.WriteToSocket(clients[id].Socket)
 			clients[id].Socket.Close()
 			return
@@ -415,7 +417,7 @@ func HandleConnection(conn net.Conn) {
 	w := packet.CreatePacketWriter()
 
 	if slot_assigned == false {
-		protocol.WriteDisconnect(&w, "The server is full!")
+		protocol.WriteDisconnect(&w, protocol.DISCONNECT_SERVER_FULL)
 		w.WriteToSocket(conn)
 		log.Println("Closed Connection:", conn.RemoteAddr())
 		return

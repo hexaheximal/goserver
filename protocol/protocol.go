@@ -6,9 +6,26 @@ import (
 )
 
 const (
-	// Misc.
+	// Protocol constants
 
 	PROTOCOL_VERSION = 0x07
+
+	// Disconnect messages
+
+	DISCONNECT_PROTOCOL_VERSION = "Wrong protocol version."
+	DISCONNECT_INVALID_NAME = "Illegal name."
+	DISCONNECT_SERVER_FULL = "The server is full!"
+	DISCONNECT_MULTIPLE_CONNECTIONS = "You logged in from another computer."
+	DISCONNECT_BANNED = "You're banned!"
+	
+	// These messages will never be shown to players with unmodified clients
+
+	DISCONNECT_CHEAT_CHAT_MESSAGE = "Cheat detected: Bad chat message!"
+	DISCONNECT_CHEAT_LAG = "Cheat detected: Too much lag"
+	DISCONNECT_CHEAT_NAME = "Cheat detected: Bad name!"
+	DISCONNECT_CHEAT_DISTANCE = "Cheat detected: Distance"
+	DISCONNECT_CHEAT_TILE_TYPE = "Cheat detected: Tile type"
+
 	
 	// Client -> Server
 
