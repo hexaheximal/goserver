@@ -403,6 +403,47 @@ func HandleMessage(r *packet.PacketReader, w *packet.PacketWriter, id byte) {
 
 			log.Println(parsedCommand)
 
+			if parsedCommand.Name == "help" {
+				protocol.WriteMessage(w, 0xff, "The /help command has not been implemented yet.")
+				w.WriteToSocket(clients[id].Socket)
+			}
+
+			if parsedCommand.Name == "kick" {
+				if 1 > len(parsedCommand.Arguments) {
+					protocol.WriteMessage(w, 0xff, "You need to specify a player to kick.")
+					w.WriteToSocket(clients[id].Socket)
+					return
+				}
+
+				playerID := byte(0xff)
+
+				for i := byte(0); i < byte(len(clients)); i++ {
+					if clients[i].Username == parsedCommand.Arguments[0] {
+						playerID = i
+						break
+					}
+				}
+
+				if playerID == 0xff {
+					protocol.WriteMessage(w, 0xff, "Failed to find a player with the name \"" + parsedCommand.Arguments[0] + "\".")
+					w.WriteToSocket(clients[id].Socket)
+					return
+				}
+
+				message := "You have been kicked!"
+
+				if len(parsedCommand.Arguments) > 1 {
+					message = parsedCommand.Arguments[1]
+				}
+
+				protocol.WriteDisconnect(w, message)
+				w.WriteToSocket(clients[playerID].Socket)
+				clients[playerID].Socket.Close()
+
+				protocol.WriteMessage(w, 0xff, parsedCommand.Arguments[0] + " has been kicked!")
+				w.WriteToSocket(clients[id].Socket)
+			}
+
 			return
 		}
 
