@@ -10,6 +10,7 @@ import (
 	"goserver/level"
 	"goserver/packet"
 	"goserver/protocol"
+	"goserver/command"
 	"goserver/serialization"
 	"io/ioutil"
 	"log"
@@ -392,11 +393,21 @@ func HandleMessage(r *packet.PacketReader, w *packet.PacketWriter, id byte) {
 		}
 
 		if message[0] == byte('/') {
+			if !command.CanRun(clients[id].Username, message) {
+				protocol.WriteMessage(w, 0xff, "You do not have permission to use that command.")
+				w.WriteToSocket(clients[id].Socket)
+				return
+			}
+
+			parsedCommand := command.Parse(clients[id].Username, id, message)
+
+			log.Println(parsedCommand)
+
 			return
 		}
 
-		log.Println(clients[id].Username + ": " + clients[id].Username)
-		protocol.WriteMessage(w, id, clients[id].Username+": "+clients[id].Username)
+		log.Println(clients[id].Username + ": " + message)
+		protocol.WriteMessage(w, id, clients[id].Username+": "+message)
 		SendToAllClients(0xff, w)
 		return
 	}
